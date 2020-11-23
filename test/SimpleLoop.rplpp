@@ -1,0 +1,10 @@
+class Program
+
+    method main()
+        local int x = 0
+        from x = 0 do
+            x += 1
+        loop
+            skip
+        until x = 5
+        delocal int x = 5

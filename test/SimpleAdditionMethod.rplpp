@@ -1,0 +1,15 @@
+class Program
+    int z
+
+    method addOne(int y)
+        y += 1
+
+    method addTwo(int u)
+        call addOne(u)
+        call addOne(u)
+
+    method main()
+        local int x = 0
+        call addTwo(x)
+        z <=> x
+        delocal int x = 0

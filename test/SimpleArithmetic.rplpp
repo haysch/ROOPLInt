@@ -1,0 +1,12 @@
+class Program
+
+    method main()
+        local int y = 0
+        local int x = 0
+        x += 1 + 2
+        y += x % 2
+        x -= 2
+        x ^= y
+        x <=> y
+        delocal int x = 1
+        delocal int y = 0
