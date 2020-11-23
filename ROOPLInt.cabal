@@ -1,25 +1,26 @@
-name:                 ROOPLPPC
+name:                 ROOPLInt
 version:              0.1.0.0
-synopsis:             ROOPL++ to PISA Compiler
+synopsis:             ROOPL++ Interpreter
 -- description:
 license:              MIT
 license-file:         LICENSE
-homepage:             https://github.com/cservenka/ROOPLPPC
-author:               Martin Holm Cservenka
-maintainer:           mhcservenka@gmail.com
+homepage:             https://github.com/haysch/ROOPLInt
+author:               Lasse Hay-Schmidt (Interpreter) & Martin Holm Cservenka (backbone)
+maintainer:           lasse.hay.schmidt@gmail.com
 category:             Language
 -- copyright:
 build-type:           Simple
 extra-source-files:   README.md
 cabal-version:        >=1.10
 
-executable ROOPLPPC
-  main-is:              ROOPLPPC.hs
+executable ROOPLInt
+  main-is:              ROOPLInt.hs
   other-modules:        AST
                       , ClassAnalyzer
                       , CodeGenerator
                       , MacroExpander
                       , PISA
+                      , Interpreter
                       , Parser
                       , ScopeAnalyzer
                       , TypeChecker
