@@ -1,4 +1,5 @@
 class Program
+    int z
 
     method main()
         local int y = 0
@@ -8,5 +9,7 @@ class Program
         x -= 2
         x ^= y
         x <=> y
-        delocal int x = 1
+        z <=> x
+        delocal int x = 0
         delocal int y = 0
+        z += 5

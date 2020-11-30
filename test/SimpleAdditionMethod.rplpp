@@ -11,5 +11,6 @@ class Program
     method main()
         local int x = 0
         call addTwo(x)
-        z <=> x
+        z += x
+        uncall addTwo(x)
         delocal int x = 0

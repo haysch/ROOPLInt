@@ -1,13 +1,15 @@
 class Program
+    int z
 
     method main()
         local int x = 1
-        local int y = 1
+        local int y = 0
         if y = 1 then
             x -= 1
             y -= 1
+            z += 10
         else
-            x ^= 1
-        fi y = 0
+            z <=> x
+        fi z = 10
         delocal int y = 0
         delocal int x = 0
