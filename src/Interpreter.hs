@@ -25,7 +25,7 @@ data IExpr = Const Integer
 
 type Loc = SIdentifier
 type IExpression = IExpr
-type Env = Map SIdentifier Loc
+type Env = Map SIdentifier (Loc, Maybe SExpression)
 type Store = Map Loc IExpression
 
 data InterpreterState =
@@ -33,7 +33,6 @@ data InterpreterState =
         program :: SProgram,
         saState :: SAState,
         env :: Env,
-        storeIndex :: SIdentifier,
         store :: Store
     } deriving (Show, Eq)
 
@@ -46,7 +45,6 @@ initialState p s =
         program = p,
         saState = s,
         env = Map.empty,
-        storeIndex = 0,
         store = Map.empty
     }
 
@@ -58,43 +56,58 @@ replaceNth p v (x:xs)
 
 addBinding :: SIdentifier -> IExpression -> Interpreter ()
 addBinding n e = do
-    cenv <- gets env
-    cstore <- gets store
-    i <- gets storeIndex
-    let nenv = Map.insert n i cenv
-        nstore = Map.insert i e cstore
-     in modify $ \s -> s { env = nenv, storeIndex = 1 + i, store = nstore }
+    env <- gets env
+    store <- gets store
+    let env' = Map.insert n (n, Nothing) env
+        store' = Map.insert n e store
+     in modify $ \s -> s { env = env', store = store' }
 
 updateBinding :: SIdentifier -> IExpression -> Interpreter ()
 updateBinding n e = do
     env <- gets env
     case Map.lookup n env of
-        Just loc -> do
-            cstore <- gets store
-            let nstore = Map.adjust (const e) loc cstore
-             in modify $ \s -> s { store = nstore }
+        Just (loc, _) -> do
+            store <- gets store
+            let store' = Map.adjust (const e) loc store
+             in modify $ \s -> s { store = store' }
         Nothing -> getIdentifierName n >>= \vn ->
             throwError $ "Unknown reference of variable '" ++ vn ++ "'"
 
-addReference :: (SIdentifier, Maybe SExpression) -> SVariableDeclaration -> Interpreter ()
-addReference (n1, Nothing) (GDecl _ n2) = gets env >>= \cenv ->
-    case Map.lookup n1 cenv of
+addReference :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpression) -> Interpreter ()
+addReference (n1, Nothing) (n2, Nothing) = do
+    env <- gets env
+    case Map.lookup n1 env of
         Just l ->
-            let nenv = Map.insert n2 l cenv
-             in modify $ \s -> s { env = nenv }
+            let env' = Map.insert n2 l env
+             in modify $ \s -> s { env = env' }
+        Nothing -> getIdentifierName n1 >>= \vn ->
+            throwError $ "Unable to find location for '" ++ vn ++ "'"
+addReference (n1, Just p) (n2, Nothing) = do
+    env <- gets env
+    case Map.lookup n1 env of
+        Just (l, _) ->
+            let env' = Map.insert n2 (l, Just p) env
+             in modify $ \s -> s { env = env' }
         Nothing -> getIdentifierName n1 >>= \vn ->
             throwError $ "Unable to find location for '" ++ vn ++ "'"
 
 removeReference :: SIdentifier -> Interpreter ()
-removeReference n = gets env >>= \cenv ->
-    let nenv = Map.delete n cenv
-     in modify $ \s -> s { env = nenv }
+removeReference n = do
+    env <- gets env
+    let env' = Map.delete n env
+     in modify $ \s -> s { env = env' }
 
-lookupReference :: SIdentifier -> Interpreter IExpression
-lookupReference l = gets store >>= \store ->
+lookupStore :: SIdentifier -> Interpreter IExpression
+lookupStore l = gets store >>= \store ->
     case Map.lookup l store of
         Just e -> return e
         Nothing -> throwError $ "Unknown location " ++ show l
+
+-- lookupIndexReference :: SIdentifier -> Interpreter SExpression
+-- lookupIndexReference l = gets arrIdx >>= \arrIdx ->
+--     case Map.lookup l arrIdx of
+--         Just e -> return e
+--         Nothing -> throwError $ "No reference to an index for " ++ show l
 
 lookupVariableTable :: SIdentifier -> Interpreter IExpression
 lookupVariableTable n = gets (symbolTable . saState) >>= \st ->
@@ -110,12 +123,13 @@ lookupVariableTable n = gets (symbolTable . saState) >>= \st ->
         _ -> getIdentifierName n >>= \vn ->
                 throwError $ "Unknown variable type for " ++ vn
 
-lookupVariableValue :: SIdentifier -> Interpreter IExpression
+lookupVariableValue :: SIdentifier -> Interpreter (IExpression, Maybe SExpression)
 lookupVariableValue n = gets env >>= \env ->
     case Map.lookup n env of
-        Just loc -> lookupReference loc
+        Just (loc, offset) -> lookupStore loc >>= \loc' ->
+            return (loc', offset)
         Nothing -> lookupVariableTable n >>= \v ->
-                       addBinding n v >> return v
+                       addBinding n v >> return (v, Nothing)
 
 checkOutOfBounds :: SIdentifier -> [a] -> Integer -> Interpreter ()
 checkOutOfBounds n arr p =
@@ -190,37 +204,41 @@ evalBinOp binop e1 e2 = do
 
 evalExpression :: SExpression -> Interpreter IExpression
 evalExpression (Constant n) = return $ Const n
-evalExpression (Variable v) = lookupVariableValue v
+evalExpression (Variable v) = lookupVariableValue v >>= \(v', _) -> return v'
 evalExpression (ArrayElement (_, e)) = evalExpression e
 evalExpression AST.Nil = return Interpreter.Nil
 evalExpression (Binary binop e1 e2) = evalBinOp binop e1 e2
 
 evalAssign :: SIdentifier -> ModOp -> SExpression -> Interpreter ()
 evalAssign n modop e = do
-    v <- lookupVariableValue n
+    n' <- lookupVariableValue n
     e' <- evalExpression e
-    case (v, e') of
-        (Const v1, Const v2) ->
+    case (n', e') of
+        ((Const v1, _), Const v2) ->
             let res = Const $ evalModOp modop v1 v2
-             in updateBinding n res
-        _ -> throwError "Operation not possible"
+                in updateBinding n res
+        ((IntegerArray _, Just p), _) ->
+            evalAssignArrElem (n, p) modop e
+        _ -> getIdentifierName n >>= \vn ->
+                throwError $ "Operation '" ++ show modop ++ "' not possible for '" ++ vn ++ "'"
     where evalModOp ModAdd = (+)
           evalModOp ModSub = (-)
           evalModOp ModXor = xor
 
 evalAssignArrElem :: (SIdentifier, SExpression) -> ModOp -> SExpression -> Interpreter ()
 evalAssignArrElem (n, e1) modop e2 = do
-    v <- lookupVariableValue n
+    (n', _) <- lookupVariableValue n
     e1' <- evalExpression e1
     e2' <- evalExpression e2
-    case (v, e1', e2') of
-        (IntegerArray ia, Const v1, Const v2) ->
-            checkOutOfBounds n ia v1 >>
-                let v0 = ia !! fromIntegral v1
-                    res = evalModOp modop v0 v2
-                    ia' = replaceNth v1 res ia
+    case (n', e1', e2') of
+        (IntegerArray ia, Const p, Const v2) ->
+            checkOutOfBounds n ia p >>
+                let v = ia !! fromIntegral p
+                    res = evalModOp modop v v2
+                    ia' = replaceNth p res ia
                  in updateBinding n $ IntegerArray ia'
-        _ -> throwError $ "Operation '" ++ show modop ++ "' not possible for '" ++ show v
+        _ -> getIdentifierName n >>= \vn ->
+                throwError $ "Operation '" ++ show modop ++ "' not possible for '" ++ vn ++ "'"
     where evalModOp ModAdd = (+)
           evalModOp ModSub = (-)
           evalModOp ModXor = xor
@@ -266,6 +284,10 @@ swapArrayValues (n1, ObjectArray oa1) (Just p1) (n2, ObjectArray oa2) (Just p2) 
             oa2' = replaceNth p2 o1 oa2
          in updateBinding n1 (ObjectArray oa1') >> 
                 updateBinding n2 (ObjectArray oa2')
+swapArrayValues (n1, _) _ (n2, _) _ = do
+    vn1 <- getIdentifierName n1
+    vn2 <- getIdentifierName n2
+    throwError $ "Unable to swap array values between '" ++ vn1 ++ "' and '" ++ vn2 ++ "'"
 
 evalSwap :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpression) -> Interpreter ()
 evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
@@ -273,29 +295,29 @@ evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
             case (m1, m2) of
                 (Just e1, Nothing) -> do
                     e1' <- evalExpression e1
-                    n1' <- lookupVariableValue n1
-                    n2' <- lookupVariableValue n2
+                    (n1', _) <- lookupVariableValue n1
+                    (n2', _) <- lookupVariableValue n2
                     case e1' of
                         Const p1 -> swapArrayValues (n1, n1') (Just p1) (n2, n2') Nothing
                         _ -> throwError "Unable to find position for swapping"
                 (Nothing, Just e2) -> do
                     e2' <- evalExpression e2
-                    n1' <- lookupVariableValue n1
-                    n2' <- lookupVariableValue n2
+                    (n1', _) <- lookupVariableValue n1
+                    (n2', _) <- lookupVariableValue n2
                     case e2' of
                         Const p2 -> swapArrayValues (n1, n1') Nothing (n2, n2') (Just p2)
                         _ -> throwError "Unable to find position for swapping"
                 (Just e1, Just e2) -> do
                     e1'  <- evalExpression e1
                     e2'  <- evalExpression e2
-                    n1' <- lookupVariableValue n1
-                    n2' <- lookupVariableValue n2
+                    (n1', _) <- lookupVariableValue n1
+                    (n2', _) <- lookupVariableValue n2
                     case (e1', e2') of
                         (Const p1, Const p2) -> swapArrayValues (n1, n1') (Just p1) (n2, n2') (Just p2)
                         _ -> throwError "Unable to find position for swapping"
                 (Nothing, Nothing) -> 
-                    do v1 <- lookupVariableValue n1
-                       v2 <- lookupVariableValue n2
+                    do (v1, _) <- lookupVariableValue n1
+                       (v2, _) <- lookupVariableValue n2
                        updateBinding n1 v2 >> updateBinding n2 v1
 
 evalConditional :: SExpression -> [SStatement] -> [SStatement] -> SExpression -> Interpreter ()
@@ -331,7 +353,7 @@ evalLocalBlock n e1 stmt e2 = do
     e1' <- evalExpression e1
     addBinding n e1'
     mapM_ evalStatement stmt
-    v <- lookupVariableValue n
+    (v, _) <- lookupVariableValue n
     e2' <- evalExpression e2
     if v == e2' then 
         removeReference n -- ??
@@ -344,7 +366,8 @@ evalLocalBlock n e1 stmt e2 = do
 
 evalCall :: [(SIdentifier, Maybe SExpression)] -> [SVariableDeclaration] -> [SStatement] -> Interpreter ()
 evalCall args ps stmt =
-    zipWithM_ addReference args ps >> -- add references to environment
+    let ps' = map (\(GDecl _ p) -> (p, Nothing)) ps
+     in zipWithM_ addReference args ps' >> -- add references to environment
         mapM_ evalStatement stmt >>
             mapM_ (\(GDecl _ p) -> removeReference p) ps -- remove references from environment
 
@@ -364,7 +387,7 @@ evalObjectConstruction (n, Nothing) =
     let obj = Object $ Just Map.empty
      in addBinding n obj
 evalObjectConstruction (n, Just e) = do
-    n' <- lookupVariableValue n
+    (n', _) <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
         (ObjectArray oa, Const p) ->
@@ -376,7 +399,7 @@ evalObjectConstruction (n, Just e) = do
 evalObjectDestruction :: (SIdentifier, Maybe SExpression) -> Interpreter ()
 evalObjectDestruction (n, Nothing) = updateBinding n Interpreter.Nil
 evalObjectDestruction (n, Just e) = do
-    n' <- lookupVariableValue n
+    (n', _) <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
         (ObjectArray oa, Const p) -> 
@@ -387,25 +410,23 @@ evalObjectDestruction (n, Just e) = do
                 throwError $ "Unable to destruction " ++ vn
 
 evalCopyReference :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpression) -> Interpreter ()
-evalCopyReference n m = return ()
+evalCopyReference = addReference
 
-evalUnCopyReference :: (SIdentifier, Maybe SExpression) -> Interpreter ()
-evalUnCopyReference (n, _) = return ()
+evalUnCopyReference :: DataType -> (SIdentifier, Maybe SExpression) -> Interpreter ()
+evalUnCopyReference dt (n, _) =
+    case dt of
+        IntegerArrayType -> addBinding n Interpreter.Nil
+        (ObjectArrayType _) -> addBinding n Interpreter.Nil
+        _ -> throwError $ "Type '" ++ show dt ++ "' not supported for uncopying"
 
 evalArrayConstruction :: SExpression -> SIdentifier -> Interpreter ()
 evalArrayConstruction e n = do
     e' <- evalExpression e
-    t <- getArrayType n
+    t <- getType n
     case (t, e') of
         (IntegerArrayType, Const l)  -> addBinding n (IntegerArray $ replicate (fromIntegral l) 0)
         (ObjectArrayType _, Const l) -> addBinding n (ObjectArray $ replicate (fromIntegral l) Nothing)
         _ -> throwError $ "Unsupported array datatype " ++ show t
-    where getArrayType n = gets (symbolTable . saState) >>= \st ->
-            case lookup n st of
-                Just (LocalVariable tp _) -> return tp
-                Just (ClassField tp _ _ _) -> return tp
-                Just (MethodParameter tp _) -> return tp
-                Nothing -> getIdentifierName n >>= \n' -> throwError $ "No array type for " ++ n'
 
 evalArrayDeconstruction :: SIdentifier -> Interpreter ()
 evalArrayDeconstruction n = updateBinding n Interpreter.Nil
@@ -422,8 +443,8 @@ evalStatement (LocalCall m args) = evalLocalCall m args
 evalStatement (LocalUncall m args) = evalLocalUncall m args
 evalStatement (ObjectConstruction _ (n, e)) = evalObjectConstruction (n, e)
 evalStatement (ObjectDestruction _ (n, e)) = evalObjectDestruction (n, e)
--- evalStatement (CopyReference _ n m) = evalCopyReference n m
--- evalStatement (UnCopyReference _ n _) = evalUnCopyReference n
+evalStatement (CopyReference _ n m) = evalCopyReference n m
+evalStatement (UnCopyReference tp _ m) = evalUnCopyReference tp m
 evalStatement (ArrayConstruction (_, e) n) = evalArrayConstruction e n
 evalStatement (ArrayDestruction _ n) = evalArrayDeconstruction n
 evalStatement Skip = return ()
@@ -433,6 +454,14 @@ evalMainMethod mm1 ((_, GMDecl mm2 _ body) : rest)
     | mm1 == mm2 = mapM_ evalStatement body
     | otherwise = evalMainMethod mm1 rest
 evalMainMethod _ [] = throwError "No main method found"
+
+getType :: SIdentifier -> Interpreter DataType
+getType n = gets (symbolTable . saState) >>= \st ->
+    case lookup n st of
+        Just (LocalVariable tp _) -> return tp
+        Just (ClassField tp _ _ _) -> return tp
+        Just (MethodParameter tp _) -> return tp
+        Nothing -> getIdentifierName n >>= \vn -> throwError $ "No type matching " ++ vn
 
 getObjectType :: SIdentifier -> Interpreter TypeName
 getObjectType n = gets (symbolTable . saState) >>= \st ->
@@ -496,9 +525,9 @@ evalProgram = do
     evalMainMethod mm p
     env <- gets env
     -- TODO fix this mess - not very nice to read, only used for translating identifier integer to variable
-    show <$> mapM (\(k, l) -> 
+    show <$> mapM (\(k, (l, _)) -> 
                     getIdentifierName k >>= \k' ->
-                        lookupReference l >>= \v ->
+                        lookupStore l >>= \v ->
                             return (k',v)
                   ) (Map.toList env)
 
@@ -506,4 +535,4 @@ evalProgram = do
 -- interpret (sprg, sastt) = return $ printAST sprg ++ printAST sastt
 
 interpret :: (SProgram, SAState) -> Except String String
-interpret (p, s) = fst <$> runStateT (runInt evalProgram) (initialState p s) -- printAST . snd <$> -- for printing state
+interpret (p, s) = printAST . snd <$> runStateT (runInt evalProgram) (initialState p s) -- printAST . snd <$> -- for printing state
