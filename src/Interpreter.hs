@@ -110,12 +110,6 @@ lookupStore l = gets store >>= \store ->
         Just e -> return e
         Nothing -> throwError $ "Unknown location " ++ show l
 
--- lookupIndexReference :: SIdentifier -> Interpreter SExpression
--- lookupIndexReference l = gets arrIdx >>= \arrIdx ->
---     case Map.lookup l arrIdx of
---         Just e -> return e
---         Nothing -> throwError $ "No reference to an index for " ++ show l
-
 -- TODO, still necessary after implementing field initialization for objects?
 lookupVariableTable :: SIdentifier -> Interpreter IExpression
 lookupVariableTable n = gets (symbolTable . saState) >>= \st ->
@@ -219,7 +213,20 @@ evalBinOp binop e1 e2 = do
 evalExpression :: SExpression -> Interpreter IExpression
 evalExpression (Constant n) = return $ Const n
 evalExpression (Variable v) = lookupVariableValue v >>= \(v', _) -> return v'
-evalExpression (ArrayElement (_, e)) = evalExpression e
+evalExpression (ArrayElement (v, e)) = do
+    (v', _) <- lookupVariableValue v
+    e' <- evalExpression e
+    case (v', e') of
+        (IntegerArray ia, Const p) ->
+            checkOutOfBounds v ia p >>
+                let v = ia !! fromIntegral p
+                 in return $ Const v
+        (ObjectArray oa, Const p) ->
+            checkOutOfBounds v oa p >>
+                let o = oa !! fromIntegral p
+                 in return $ Object o
+        _ -> getIdentifierName v >>= \vn ->
+            throwError $ "Unable to find array '" ++ vn ++ "'"
 evalExpression AST.Nil = return Interpreter.Nil
 evalExpression (Binary binop e1 e2) = evalBinOp binop e1 e2
 
@@ -231,7 +238,7 @@ evalAssign n modop e = do
     case (n', e') of
         ((Const v1, _), Const v2) ->
             let res = Const $ evalModOp modop v1 v2
-                in updateBinding n res
+             in updateBinding n res
         ((IntegerArray _, Just p), _) ->
             evalAssignArrElem (n, p) modop e
         _ -> getIdentifierName n >>= \vn ->
@@ -577,4 +584,4 @@ evalProgram = do
 
 -- | Interpretation using a scoped program and scoped analysis state
 interpret :: (SProgram, SAState) -> Except String String
-interpret (p, s) = printAST . snd <$> runStateT (runInt evalProgram) (initialState p s) -- printAST . snd <$> -- for printing state
+interpret (p, s) = fst <$> runStateT (runInt evalProgram) (initialState p s) -- printAST . snd <$> -- for printing state
