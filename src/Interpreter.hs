@@ -34,7 +34,7 @@ data InterpreterState =
     InterpreterState {
         program :: SProgram,
         saState :: SAState,
-        env :: Env,
+        caller :: Env,
         objectScope :: ObjectScope,
         store :: Store,
         storeIndex :: SIdentifier
@@ -49,7 +49,7 @@ initialState p s =
     InterpreterState {
         program = p,
         saState = s,
-        env = Map.empty,
+        caller = Map.empty,
         objectScope = [],
         store = Map.empty,
         storeIndex = 0
@@ -63,32 +63,26 @@ replaceNth p v (x:xs)
     | otherwise = x:replaceNth (p - 1) v xs
 
 -- | Returns the current object scope
-topObjectScope :: Interpreter Env
+topObjectScope :: Interpreter IObject
 topObjectScope = gets objectScope >>= 
     \case
         (e:_) -> return e
         [] -> throwError "Empty object scope stack"
 
--- | Enters a new object scope using an object's environment as reference
+-- | Enters a new object scope using an object's environment as reference and sets caller to the calling object's environment, if any exists
 enterObjectScope :: IObject -> Interpreter ()
-enterObjectScope env = modify $ \s -> s { objectScope = env : objectScope s}
+enterObjectScope env = gets objectScope >>= \os ->
+    let clr = case os of
+                (o:_) -> o
+                [] -> Map.empty
+     in modify $ \s -> s { caller = clr, objectScope = env : objectScope s}
 
 -- | Leaves the current object scope and returns its updated environment
 leaveObjectScope :: Interpreter IObject
 leaveObjectScope = do
     curr <- topObjectScope
-    modify $ \s -> s { objectScope = drop 1 (objectScope s) }
+    modify $ \s -> s { caller = Map.empty, objectScope = drop 1 (objectScope s) }
     return curr
-
--- | Adds variable binding to the store and maps the reference in the global environment
-addBinding :: SIdentifier -> IExpression -> Interpreter ()
-addBinding n e = do
-    env <- gets env
-    store <- gets store
-    storeIdx <- gets storeIndex
-    let env' = Map.insert n (storeIdx, Nothing) env
-        store' = Map.insert storeIdx e store
-     in modify $ \s -> s { env = env', store = store', storeIndex = 1 + storeIdx }
 
 -- | Adds variable binding to store and maps the reference to the current object environment
 addObjectBinding :: SIdentifier -> IExpression -> Interpreter ()
@@ -100,38 +94,17 @@ addObjectBinding n e = do
         store' = Map.insert storeIdx e store
      in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), store = store', storeIndex = 1 + storeIdx }
 
--- | Returns which of the binding functions to use. If the object scope is empty, return `addBinding` (to global environment) else `addObjectBinding`
-getBindingFunction :: Interpreter (SIdentifier -> IExpression -> Interpreter ())
-getBindingFunction = gets (null . objectScope) >>= \flg ->
-    if flg then
-        return addBinding
-    else
-        return addObjectBinding
-
+-- | Fetches the binding location of an identifier
 getBindingLocation :: SIdentifier -> Interpreter (Loc, Maybe SExpression)
-getBindingLocation n = do
-    env <- gets env
-    case Map.lookup n env of
+getBindingLocation n = topObjectScope >>= \os ->
+    case Map.lookup n os of
         Just b -> return b
-        Nothing -> topObjectScope >>= \os ->
-            case Map.lookup n os of
-                Just b -> return b
-                Nothing -> getIdentifierName n >>= \vn ->
-                    throwError $ "Unknown reference of variable '" ++ vn ++ "'"
+        Nothing -> getIdentifierName n >>= \vn ->
+            throwError $ "Unknown reference of variable '" ++ vn ++ "'"
 
 -- | Updates a binding in the store
 updateBinding :: SIdentifier -> IExpression -> Interpreter ()
-updateBinding n e = getBindingLocation n >>= \(loc, _) ->
-    updateStore e loc
-    -- do
-    -- env <- gets env
-    -- case Map.lookup n env of
-    --     Just (loc, _) -> updateStore e loc
-    --     Nothing -> topObjectScope >>= \os ->
-    --         case Map.lookup n os of
-    --             Just (loc, _) -> updateStore e loc
-    --             Nothing -> getIdentifierName n >>= \vn ->
-    --                 throwError $ "Unknown reference of variable '" ++ vn ++ "'"
+updateBinding n e = getBindingLocation n >>= \(loc, _) -> updateStore e loc
     where updateStore :: IExpression -> Loc -> Interpreter ()
           updateStore e loc = do
             store <- gets store
@@ -141,33 +114,36 @@ updateBinding n e = getBindingLocation n >>= \(loc, _) ->
 -- | Adds a variable reference to the environment
 addReference :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpression) -> Interpreter ()
 addReference (n1, Nothing) (n2, Nothing) = do
-    env <- gets env
-    case Map.lookup n1 env of
-        Just l ->
-            let env' = Map.insert n2 l env
-             in modify $ \s -> s { env = env' }
-        Nothing ->
-            getIdentifierName n1 >>= \vn ->
-                throwError $ "Unable to find location for '" ++ show (vn, n1) ++ "'"
+    os <- topObjectScope
+    case Map.lookup n1 os of
+        Just l -> do
+            let os' = Map.insert n2 l os
+             in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s) }
+        Nothing -> do
+            cl <- gets caller
+            case Map.lookup n1 cl of
+                Just l -> 
+                    let os' = Map.insert n2 l os
+                     in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s) }
+                Nothing -> 
+                    getIdentifierName n1 >>= \vn ->
+                        throwError $ "Unable to find location for '" ++ show (vn, n1) ++ "'"
 addReference (n1, Just p) (n2, Nothing) = do
-    env <- gets env
-    case Map.lookup n1 env of
-        Just (l, _) ->
-            let env' = Map.insert n2 (l, Just p) env
-             in modify $ \s -> s { env = env' }
+    cl <- gets caller
+    case Map.lookup n1 cl of
+        Just (l, _) -> do
+            os <- topObjectScope
+            let os' = Map.insert n2 (l, Just p) os
+             in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s) }
         Nothing -> getIdentifierName n1 >>= \vn ->
             throwError $ "Unable to find location for '" ++ vn ++ "'"
-    -- where updateEnvironment :: SIdentifier -> (Loc, Maybe SExpression) -> Interpreter ()
-    --       updateEnvironment n l = gets env >>= \env ->
-    --           let env' = Map.insert
 -- addReference (n1, Just p1) (n2, Just p2) =
 
 -- | Removes a variable reference from the environment
 removeReference :: SIdentifier -> Interpreter ()
-removeReference n = do
-    env <- gets env
-    let env' = Map.delete n env
-     in modify $ \s -> s { env = env' }
+removeReference n = topObjectScope >>= \os ->
+    let os' = Map.delete n os
+     in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s) }
 
 -- | Looks up location in store to get the value
 lookupStore :: SIdentifier -> Interpreter IExpression
@@ -178,16 +154,12 @@ lookupStore l = gets store >>= \store ->
 
 -- | Looks up a reference in the environment to find value in store
 lookupVariableValue :: SIdentifier -> Interpreter (IExpression, Maybe SExpression)
-lookupVariableValue n = gets env >>= \env ->
-    case Map.lookup n env of
+lookupVariableValue n = topObjectScope >>= \os ->
+    case Map.lookup n os of
         Just (loc, offset) -> lookupStore loc >>= \loc' ->
             return (loc', offset)
-        Nothing -> topObjectScope >>= \os ->
-            case Map.lookup n os of
-                Just (loc, offset) -> lookupStore loc >>= \loc' ->
-                    return (loc', offset)
-                Nothing -> getIdentifierName n >>= \vn -> 
-                    throwError $ "Variable '" ++ vn ++ "' has not been defined"
+        Nothing -> getIdentifierName n >>= \vn -> 
+            throwError $ "Variable '" ++ vn ++ "' has not been defined"
 
 -- | Checks whether an array index is out of bounds
 checkOutOfBounds :: SIdentifier -> [a] -> Integer -> Interpreter ()
@@ -307,7 +279,7 @@ evalAssign n modop e = do
           evalModOp ModSub = (-)
           evalModOp ModXor = xor
 
--- | Evaluates a array index assignment of a scoped expression
+-- | Evaluates an array index assignment of a scoped expression
 evalAssignArrElem :: (SIdentifier, SExpression) -> ModOp -> SExpression -> Interpreter ()
 evalAssignArrElem (n, e1) modop e2 = do
     (n', _) <- lookupVariableValue n
@@ -440,8 +412,7 @@ evalObjectBlock n stmt =
 evalLocalBlock :: SIdentifier -> SExpression -> [SStatement] -> SExpression -> Interpreter ()
 evalLocalBlock n e1 stmt e2 = do
     e1' <- evalExpression e1
-    bf <- getBindingFunction
-    bf n e1'
+    addObjectBinding n e1'
     mapM_ evalStatement stmt
     (e1', _) <- lookupVariableValue n
     e2' <- evalExpression e2
@@ -461,12 +432,8 @@ evalCall :: [(SIdentifier, Maybe SExpression)] -> [SVariableDeclaration] -> [SSt
 evalCall args ps stmt =
     let ps' = map (\(GDecl _ p) -> (p, Nothing)) ps
      in zipWithM_ addReference args ps' >> -- add references to environment
-        mapM_ evalStatement stmt
-        -- >>
-        --     mapM_ (\(GDecl _ p) -> removeReference p) ps >> -- remove references from environment
-                -- do e <- gets env 
-                --    stre <- gets store
-                --    trace "" $ traceShow e $ traceShow stre $ return ()
+        mapM_ evalStatement stmt >>
+            mapM_ (\(GDecl _ p) -> removeReference p) ps -- remove references from environment
 
 -- | Evaluation of a calling a local method
 evalLocalCall :: SIdentifier -> [(SIdentifier, Maybe SExpression)] -> Interpreter ()
@@ -508,8 +475,9 @@ evalObjectUncall (n, Nothing) m args = lookupVariableValue n >>=
             evalCall args ps stmt'
             oenv' <- leaveObjectScope
             updateBinding n $ Object oenv'
-        (Interpreter.Nil, _) -> getIdentifierName n >>= \vn ->
-            throwError $ "Uncalling object '" ++ vn ++ "' has not been initialized"
+        (Interpreter.Nil, _) -> topObjectScope >>= \os -> gets store >>= \stre ->
+            getIdentifierName n >>= \vn ->
+            trace (printAST os) $ trace (printAST stre) $ throwError $ "Uncalling object '" ++ show (vn, n) ++ "::" ++ m ++ "'. Object has not been initialized"
         _ -> getIdentifierName n >>= \vn ->
             throwError $ "Unable to uncall object '" ++ vn ++ "'"
 
@@ -521,9 +489,8 @@ evalObjectConstruction (n, Nothing) = do
     fs <- getFields tn
     initializeObject tn fs
     o <- leaveObjectScope
-    bf <- getBindingFunction
     let obj = Object o
-     in bf n obj
+     in addObjectBinding n obj
 evalObjectConstruction (n, Just e) = do
     (n', _) <- lookupVariableValue n
     e' <- evalExpression e
@@ -554,10 +521,10 @@ evalCopyReference = addReference
 
 -- | Evaluation of removing a reference to a variable
 evalUnCopyReference :: DataType -> (SIdentifier, Maybe SExpression) -> Interpreter ()
-evalUnCopyReference dt (n, _) = getBindingFunction >>= \bf ->
+evalUnCopyReference dt (n, _) =
     case dt of
-        IntegerArrayType -> bf n Interpreter.Nil
-        (ObjectArrayType _) -> bf n Interpreter.Nil
+        IntegerArrayType -> addObjectBinding n Interpreter.Nil
+        (ObjectArrayType _) -> addObjectBinding n Interpreter.Nil
         _ -> throwError $ "Type '" ++ show dt ++ "' not supported for uncopying"
 
 -- | Evaluation of constructing an int/object array
@@ -565,10 +532,9 @@ evalArrayConstruction :: SExpression -> SIdentifier -> Interpreter ()
 evalArrayConstruction e n = do
     e' <- evalExpression e
     t <- getType n
-    bf <- getBindingFunction
     case (t, e') of
-        (IntegerArrayType, Const l)  -> bf n (IntegerArray $ replicate (fromIntegral l) 0)
-        (ObjectArrayType _, Const l) -> bf n (ObjectArray $ replicate (fromIntegral l) Interpreter.Nil)
+        (IntegerArrayType, Const l)  -> addObjectBinding n (IntegerArray $ replicate (fromIntegral l) 0)
+        (ObjectArrayType _, Const l) -> addObjectBinding n (ObjectArray $ replicate (fromIntegral l) Interpreter.Nil)
         _ -> throwError $ "Unsupported array datatype " ++ show t
 
 -- | Evaluation of destructing an int/object array
@@ -706,8 +672,10 @@ showEnvironment env =
 -- TODO come up with a better way of constructing expression strings
 showValueString :: IExpression -> Interpreter String
 showValueString (Const v) = return $ show v
-showValueString (Object o) = showEnvironment o >>= \o' -> 
-    return $ "Object " ++ show o'
+showValueString (Object o) = showEnvironment o >>= \o' ->
+    let values = map (\(i, s) -> i ++ ": " ++ s) o'
+        valueString = intercalate ", " values
+     in return $ "Object { " ++ valueString ++ " }"
 showValueString (ObjectArray oa) = mapM showValueString oa >>= \oa' ->
     return $ "[" ++ intercalate ", " oa' ++ "]"
 showValueString Interpreter.Nil = return "Nil"
@@ -716,9 +684,8 @@ showValueString Interpreter.Nil = return "Nil"
 initializeObject :: TypeName -> [VariableDeclaration] -> Interpreter ()
 initializeObject tn fs = do
     st <- gets (symbolTable . saState)
-    bf <- getBindingFunction
     let ds = map (getFieldId st tn) fs
-     in mapM_ (uncurry bf) ds
+     in mapM_ (uncurry addObjectBinding) ds
     where getFieldId [] tn (GDecl _ fn) = error $ "Field '" ++ fn ++ "' in class '" ++ tn ++ "' does not exist in symbol table"
           getFieldId ((i, ClassField stp sfn stn _):st) tn f@(GDecl tp fn)
             | fn == sfn && tp == stp && tn == stn = 
@@ -739,9 +706,10 @@ evalProgram = do
     mm <- getMainMethod
     mc <- getMainClassName
     fs <- getFields mc
+    enterObjectScope Map.empty
     initializeObject mc fs
     evalMainMethod mm p
-    env <- gets env
+    env <- leaveObjectScope
     -- TODO fix this mess - not very nice to read, only used for translating identifier integer to variable
     printAST <$> showEnvironment env
 
