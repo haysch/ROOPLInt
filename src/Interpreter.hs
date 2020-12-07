@@ -108,17 +108,30 @@ getBindingFunction = gets (null . objectScope) >>= \flg ->
     else
         return addObjectBinding
 
--- | Updates a binding in the store
-updateBinding :: SIdentifier -> IExpression -> Interpreter ()
-updateBinding n e = do
+getBindingLocation :: SIdentifier -> Interpreter (Loc, Maybe SExpression)
+getBindingLocation n = do
     env <- gets env
     case Map.lookup n env of
-        Just (loc, _) -> updateStore e loc
+        Just b -> return b
         Nothing -> topObjectScope >>= \os ->
             case Map.lookup n os of
-                Just (loc, _) -> updateStore e loc
+                Just b -> return b
                 Nothing -> getIdentifierName n >>= \vn ->
                     throwError $ "Unknown reference of variable '" ++ vn ++ "'"
+
+-- | Updates a binding in the store
+updateBinding :: SIdentifier -> IExpression -> Interpreter ()
+updateBinding n e = getBindingLocation n >>= \(loc, _) ->
+    updateStore e loc
+    -- do
+    -- env <- gets env
+    -- case Map.lookup n env of
+    --     Just (loc, _) -> updateStore e loc
+    --     Nothing -> topObjectScope >>= \os ->
+    --         case Map.lookup n os of
+    --             Just (loc, _) -> updateStore e loc
+    --             Nothing -> getIdentifierName n >>= \vn ->
+    --                 throwError $ "Unknown reference of variable '" ++ vn ++ "'"
     where updateStore :: IExpression -> Loc -> Interpreter ()
           updateStore e loc = do
             store <- gets store
@@ -133,8 +146,9 @@ addReference (n1, Nothing) (n2, Nothing) = do
         Just l ->
             let env' = Map.insert n2 l env
              in modify $ \s -> s { env = env' }
-        Nothing -> getIdentifierName n1 >>= \vn ->
-            throwError $ "Unable to find location for '" ++ vn ++ "'"
+        Nothing ->
+            getIdentifierName n1 >>= \vn ->
+                throwError $ "Unable to find location for '" ++ show (vn, n1) ++ "'"
 addReference (n1, Just p) (n2, Nothing) = do
     env <- gets env
     case Map.lookup n1 env of
@@ -143,6 +157,9 @@ addReference (n1, Just p) (n2, Nothing) = do
              in modify $ \s -> s { env = env' }
         Nothing -> getIdentifierName n1 >>= \vn ->
             throwError $ "Unable to find location for '" ++ vn ++ "'"
+    -- where updateEnvironment :: SIdentifier -> (Loc, Maybe SExpression) -> Interpreter ()
+    --       updateEnvironment n l = gets env >>= \env ->
+    --           let env' = Map.insert
 -- addReference (n1, Just p1) (n2, Just p2) =
 
 -- | Removes a variable reference from the environment
@@ -169,8 +186,8 @@ lookupVariableValue n = gets env >>= \env ->
             case Map.lookup n os of
                 Just (loc, offset) -> lookupStore loc >>= \loc' ->
                     return (loc', offset)
-                Nothing -> getIdentifierName n >>=
-                    \vn -> throwError $ "Variable '" ++ vn ++ "' has not been defined"
+                Nothing -> getIdentifierName n >>= \vn -> 
+                    throwError $ "Variable '" ++ vn ++ "' has not been defined"
 
 -- | Checks whether an array index is out of bounds
 checkOutOfBounds :: SIdentifier -> [a] -> Integer -> Interpreter ()
@@ -392,12 +409,9 @@ evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
 evalConditional :: SExpression -> [SStatement] -> [SStatement] -> SExpression -> Interpreter ()
 evalConditional e1 s1 s2 e2 = do
     e1' <- evalExpression e1
-    env <- gets env
-    stre <- gets store
-    traceShow env $ traceShow stre $ traceShow (e1, e1') $
-        if e1' /= Const 0 -- e1' is True
-            then mapM_ evalStatement s1
-            else mapM_ evalStatement s2
+    if e1' /= Const 0 -- e1' is True
+        then mapM_ evalStatement s1
+        else mapM_ evalStatement s2
     e2' <- evalExpression e2
     when (e1' /= e2') $ -- test and assert not equal
         throwError "Entry and exit assertion are not equal"
@@ -447,8 +461,12 @@ evalCall :: [(SIdentifier, Maybe SExpression)] -> [SVariableDeclaration] -> [SSt
 evalCall args ps stmt =
     let ps' = map (\(GDecl _ p) -> (p, Nothing)) ps
      in zipWithM_ addReference args ps' >> -- add references to environment
-        mapM_ evalStatement stmt >>
-            mapM_ (\(GDecl _ p) -> removeReference p) ps -- remove references from environment
+        mapM_ evalStatement stmt
+        -- >>
+        --     mapM_ (\(GDecl _ p) -> removeReference p) ps >> -- remove references from environment
+                -- do e <- gets env 
+                --    stre <- gets store
+                --    trace "" $ traceShow e $ traceShow stre $ return ()
 
 -- | Evaluation of a calling a local method
 evalLocalCall :: SIdentifier -> [(SIdentifier, Maybe SExpression)] -> Interpreter ()
@@ -473,14 +491,27 @@ evalObjectCall (n, Nothing) m args = lookupVariableValue n >>=
             (ps, stmt) <- getObjectMethod otn m
             evalCall args ps stmt
             oenv' <- leaveObjectScope
-            traceShow oenv' $ updateBinding n $ Object oenv'
+            updateBinding n $ Object oenv'
         (Interpreter.Nil, _) -> getIdentifierName n >>= \vn ->
             throwError $ "Calling object '" ++ vn ++ "' has not been initialized"
         _ -> getIdentifierName n >>= \vn ->
             throwError $ "Unable to call object '" ++ vn ++ "'"
 
 evalObjectUncall :: (SIdentifier, Maybe SExpression) -> MethodName -> [(SIdentifier, Maybe SExpression)] -> Interpreter ()
-evalObjectUncall o m args = return ()
+evalObjectUncall (n, Nothing) m args = lookupVariableValue n >>=
+    \case
+        (Object oenv, Nothing) -> do
+            enterObjectScope oenv
+            otn <- getObjectTypeName n
+            (ps, stmt) <- getObjectMethod otn m
+            stmt' <- reverse <$> mapM invertStatement stmt
+            evalCall args ps stmt'
+            oenv' <- leaveObjectScope
+            updateBinding n $ Object oenv'
+        (Interpreter.Nil, _) -> getIdentifierName n >>= \vn ->
+            throwError $ "Uncalling object '" ++ vn ++ "' has not been initialized"
+        _ -> getIdentifierName n >>= \vn ->
+            throwError $ "Unable to uncall object '" ++ vn ++ "'"
 
 -- | Evaluation of constructing an object
 evalObjectConstruction :: (SIdentifier, Maybe SExpression) -> Interpreter ()
@@ -555,7 +586,7 @@ evalStatement (ObjectBlock _ n stmt) = evalObjectBlock n stmt
 evalStatement (LocalBlock _ n e1 stmt e2) = evalLocalBlock n e1 stmt e2
 evalStatement (LocalCall m args) = evalLocalCall m args
 evalStatement (LocalUncall m args) = evalLocalUncall m args
-evalStatement (ObjectCall o@(i,_) m args) = getIdentifierName i >>= \vn -> trace "" $ traceShow (vn, m) $ evalObjectCall o m args
+evalStatement (ObjectCall o m args) = evalObjectCall o m args
 evalStatement (ObjectUncall o m args) = evalObjectUncall o m args
 evalStatement (ObjectConstruction _ (n, e)) = evalObjectConstruction (n, e)
 evalStatement (ObjectDestruction _ (n, e)) = evalObjectDestruction (n, e)
