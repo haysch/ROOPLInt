@@ -18,10 +18,11 @@ executable ROOPLInt
   other-modules:        AST
                       , ClassAnalyzer
                       , CodeGenerator
+                      , Interpreter
                       , MacroExpander
                       , PISA
-                      , Interpreter
                       , Parser
+                      , ProgramInverter
                       , ScopeAnalyzer
                       , TypeChecker
   -- other-extensions:
