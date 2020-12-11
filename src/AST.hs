@@ -2,6 +2,8 @@ module AST where
 
 import Text.Show.Pretty
 
+import Data.Map (Map)
+
 {-- AST Primitives --}
 type TypeName = String
 
@@ -133,6 +135,24 @@ type SVariableDeclaration = GDecl SIdentifier
 type SMethodDeclaration = GMDecl SIdentifier SIdentifier
 
 type SProgram = [(TypeName, GMDecl SIdentifier SIdentifier)]
+
+{-- Interpreter Definitions --}
+data IExpression = Const Integer
+                 | Object IObject
+                 | IntegerArray [Integer]
+                 | ObjectArray [IExpression]
+                 | Null
+    deriving (Show, Eq)
+
+type IObject = Env
+type ObjectScope = [IObject]
+
+type Refs = Map SIdentifier SIdentifier
+type ReferenceScope = [Refs]
+
+type Location = SIdentifier
+type Env = Map SIdentifier (Location, Maybe SExpression)
+type Store = Map Location IExpression
 
 {-- Other Definitions --}
 type Offset = Integer
