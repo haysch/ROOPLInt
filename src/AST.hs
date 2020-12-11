@@ -140,7 +140,7 @@ type SProgram = [(TypeName, GMDecl SIdentifier SIdentifier)]
 data IExpression = Const Integer
                  | Object IObject
                  | IntegerArray [Integer]
-                 | ObjectArray [IExpression]
+                 | ObjectArray [Location]
                  | Null
     deriving (Show, Eq)
 
