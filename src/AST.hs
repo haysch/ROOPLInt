@@ -138,7 +138,7 @@ type SProgram = [(TypeName, GMDecl SIdentifier SIdentifier)]
 
 {-- Interpreter Definitions --}
 data IExpression = Const Integer
-                 | Object IObject
+                 | Object TypeName IObject
                  | IntegerArray [Integer]
                  | ObjectArray [Location]
                  | Null
