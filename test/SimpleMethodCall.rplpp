@@ -1,6 +1,4 @@
-class Program
-    int z
-
+class Foo
     method addOne(int y)
         y += 1
 
@@ -8,9 +6,14 @@ class Program
         call addOne(u)
         call addOne(u)
 
+class Program
+    int z
+    Foo f
+    
     method main()
+        new Foo f
         local int x = 0
-        call addTwo(x)
+        call f::addTwo(x)
         z += x
-        uncall addTwo(x)
+        uncall f::addTwo(x)
         delocal int x = 0

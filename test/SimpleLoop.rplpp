@@ -1,10 +1,11 @@
 class Program
+    int z
 
     method main()
         local int x = 0
         from x = 0 do
             x += 1
         loop
-            skip
+            z += x
         until x = 5
         delocal int x = 5
