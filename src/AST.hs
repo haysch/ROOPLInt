@@ -137,22 +137,22 @@ type SMethodDeclaration = GMDecl SIdentifier SIdentifier
 type SProgram = [(TypeName, GMDecl SIdentifier SIdentifier)]
 
 {-- Interpreter Definitions --}
+type Location = SIdentifier
+type Env = Map SIdentifier Location
+type Store = Map Location IExpression
+
+type ObjectScope = [Env]
+
+type Ref = Map SIdentifier SIdentifier
+type ReferenceScope = [Ref]
+
 data IExpression = Const Integer
-                 | Object TypeName IObject
-                 | IntegerArray [Integer]
+                 | Object TypeName Env
+                 | IntegerArray [Location]
                  | ObjectArray [Location]
                  | Null
     deriving (Show, Eq)
 
-type IObject = Env
-type ObjectScope = [IObject]
-
-type Refs = Map SIdentifier SIdentifier
-type ReferenceScope = [Refs]
-
-type Location = SIdentifier
-type Env = Map SIdentifier (Location, Maybe SExpression)
-type Store = Map Location IExpression
 
 {-- Other Definitions --}
 type Offset = Integer

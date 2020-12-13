@@ -19,7 +19,7 @@ data InterpreterState =
     InterpreterState {
         program :: SProgram,
         saState :: SAState,
-        caller :: IObject,
+        caller :: Env,
         objectScope :: ObjectScope,
         referenceScope :: ReferenceScope,
         store :: Store,
@@ -50,21 +50,21 @@ replaceNth p v (x:xs)
     | otherwise = x:replaceNth (p - 1) v xs
 
 -- | Returns the current object scope
-topObjectScope :: Interpreter IObject
+topObjectScope :: Interpreter Env
 topObjectScope = gets objectScope >>= 
     \case
         (e:_) -> return e
         [] -> throwError "Empty object scope stack"
 
 -- | Returns the current reference scope
-topReferenceScope :: Interpreter Refs
+topReferenceScope :: Interpreter Ref
 topReferenceScope = gets referenceScope >>=
     \case
         (r:_) -> return r
         [] -> throwError "Empty reference scope stack"
 
 -- | Enters a new object scope using an object's environment as reference and sets caller to the calling object's environment, if any exists
-enterObjectScope :: IObject -> Interpreter ()
+enterObjectScope :: Env -> Interpreter ()
 enterObjectScope env = gets objectScope >>= \os ->
     let clr = case os of
                 (o:_) -> o
@@ -72,14 +72,14 @@ enterObjectScope env = gets objectScope >>= \os ->
      in modify $ \s -> s { caller = clr, objectScope = env : objectScope s, referenceScope = Map.empty : referenceScope s }
 
 -- | Leaves the current object scope and returns its updated environment
-leaveObjectScope :: Interpreter IObject
+leaveObjectScope :: Interpreter Env
 leaveObjectScope = do
     curr <- topObjectScope
     modify $ \s -> s { caller = Map.empty, objectScope = drop 1 (objectScope s), referenceScope = drop 1 (referenceScope s) }
     return curr
 
 -- | Creates an object by entering a new scope and initializing classfields. Returns the generated object environment.
-createObject :: TypeName -> Interpreter IObject
+createObject :: TypeName -> Interpreter Env
 createObject tn = do
     fs <- getFields tn
     enterObjectScope Map.empty
@@ -92,12 +92,12 @@ addObjectBinding n e = do
     os <- topObjectScope
     store <- gets store
     storeIdx <- gets storeIndex
-    let os' = Map.insert n (storeIdx, Nothing) os
+    let os' = Map.insert n storeIdx os
         store' = Map.insert storeIdx e store
      in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), store = store', storeIndex = 1 + storeIdx }
 
 -- | Fetches the binding location of an identifier
-getBindingLocation :: SIdentifier -> Interpreter (Location, Maybe SExpression)
+getBindingLocation :: SIdentifier -> Interpreter Location
 getBindingLocation n = topObjectScope >>= \os ->
     case Map.lookup n os of
         Just b -> return b
@@ -106,7 +106,7 @@ getBindingLocation n = topObjectScope >>= \os ->
 
 -- | Updates a variable binding in the store
 updateBinding :: SIdentifier -> IExpression -> Interpreter ()
-updateBinding n e = getBindingLocation n >>= \(loc, _) -> updateStore loc e
+updateBinding n e = getBindingLocation n >>= \l -> updateStore l e
 
 -- | Updates a store binding
 updateStore :: Location -> IExpression -> Interpreter ()
@@ -120,45 +120,75 @@ addReference :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpress
 addReference (n1, Nothing) (n2, Nothing) = do
     os <- topObjectScope
     rs <- topReferenceScope
-    case Map.lookup n1 os of
+    cl <- gets caller
+    let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
+     in case Map.lookup n1 unionEnvs of
         Just l ->
             let os' = Map.insert n2 l os
                 rs' = Map.insert n2 n1 rs
              in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), referenceScope = rs' : drop 1 (referenceScope s) }
-        Nothing -> do
-            cl <- gets caller
-            case Map.lookup n1 cl of
-                Just l ->
-                    let os' = Map.insert n2 l os
-                        rs' = Map.insert n2 n1 rs
-                     in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), referenceScope = rs' : drop 1 (referenceScope s) }
-                Nothing -> 
-                    getIdentifierName n1 >>= \vn ->
-                        throwError $ "Unable to find location for '" ++ show (vn, n1) ++ "'"
-addReference (n1, Just p) (n2, Nothing) = do
+        Nothing -> getIdentifierName n1 >>= \vn ->
+                    throwError $ "Unable to find location for '" ++ vn ++ "'"
+addReference (n1, Just p1) (n2, Nothing) = do
     os <- topObjectScope
     rs <- topReferenceScope
-    case Map.lookup n1 os of
-        Just (l, _) -> lookupStore l >>= \e ->
-            let os' = case (e, p) of
-                    (IntegerArray _, _) -> Map.insert n2 (l, Just p) os
-                    (ObjectArray oa, Constant p') ->
-                        let ol = oa !! fromIntegral p'
-                         in Map.insert n2 (ol, Nothing) os
-                rs' = Map.insert n2 n1 rs
+    cl <- gets caller
+    let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
+     in case Map.lookup n1 unionEnvs of
+        Just l -> lookupStore l >>= \e1 ->
+            let os' = case (e1, p1) of
+                        (IntegerArray ia, Constant p1') ->
+                            let il = ia !! fromIntegral p1'
+                             in Map.insert n2 il os
+                        (ObjectArray oa, Constant p') ->
+                            let ol = oa !! fromIntegral p'
+                             in Map.insert n2 ol os
+                rs' = Map.insert n2 n1 rs -- TODO: Add offset?
              in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), referenceScope = rs' : drop 1 (referenceScope s) }
-        Nothing -> do
-            cl <- gets caller
-            case Map.lookup n1 cl of
-                Just (l, _) ->
-                    let os' = Map.insert n2 (l, Just p) os
-                        rs' = Map.insert n2 n1 rs
-                     in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), referenceScope = rs' : drop 1 (referenceScope s) }
-                Nothing -> 
-                    getIdentifierName n1 >>= \vn ->
-                        throwError $ "Unable to find location for '" ++ show (vn, n1) ++ "'"
--- addReference (n1, Just p1) (n2, Just p2)
--- addReference (n1, Nothing) (n2, Just p2)
+        Nothing -> getIdentifierName n1 >>= \vn ->
+                    throwError $ "Unable to find location for '" ++ vn ++ "'"
+addReference (n1, Nothing) (n2, Just p2) = do
+    os <- topObjectScope
+    rs <- topReferenceScope
+    cl <- gets caller
+    let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
+     in case Map.lookup n1 unionEnvs of
+        Just l -> lookupVariableValue n2 >>= \e2 ->
+            case (e2, p2) of
+                (IntegerArray ia, Constant p2') ->
+                    let ia' = replaceNth p2' l ia
+                     in updateBinding n2 $ IntegerArray ia'
+                (ObjectArray oa, Constant p2') ->
+                    let oa' = replaceNth p2' l oa
+                     in updateBinding n2 $ ObjectArray oa'
+            >> 
+            let rs' = Map.insert n2 n1 rs -- TODO: Add offset?
+             in modify $ \s -> s { referenceScope = rs' : drop 1 (referenceScope s) }
+        Nothing -> getIdentifierName n1 >>= \vn ->
+                    throwError $ "Unable to find location for '" ++ vn ++ "'"
+addReference (n1, Just p1) (n2, Just p2) = do
+    os <- topObjectScope
+    rs <- topReferenceScope
+    cl <- gets caller
+    let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
+     in case Map.lookup n1 unionEnvs of
+        Just _ -> do
+            e1 <- lookupVariableValue n1
+            e2 <- lookupVariableValue n2
+            case (e1, p1, e2, p2) of
+                (IntegerArray ia1, Constant p1', IntegerArray ia2, Constant p2') ->
+                    let il1 = ia1 !! fromIntegral p1'
+                        ia2' = replaceNth p2' il1 ia2
+                     in updateBinding n2 $ IntegerArray ia2'
+                (ObjectArray oa1, Constant p1', ObjectArray oa2, Constant p2') ->
+                    let ol1 = oa1 !! fromIntegral p1'
+                        oa2' = replaceNth p2' ol1 oa2
+                     in updateBinding n2 $ ObjectArray oa2'
+            >> 
+            let rs' = Map.insert n2 n1 rs -- TODO: Add offset?
+             in modify $ \s -> s { referenceScope = rs' : drop 1 (referenceScope s) }
+        Nothing -> getIdentifierName n1 >>= \vn ->
+                    throwError $ "Unable to find location for '" ++ vn ++ "'"
 
 -- | Removes a variable reference from the environment
 removeReference :: SIdentifier -> Interpreter ()
@@ -169,6 +199,15 @@ removeReference n = do
         rs' = Map.delete n rs
      in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), referenceScope = rs' : drop 1 (referenceScope s) }
 
+-- | Adds expression to store and returns its location. Internal method for bypassing creation of variables
+addToStore :: IExpression -> Interpreter SIdentifier
+addToStore e = do
+    store <- gets store
+    storeIdx <- gets storeIndex
+    let store' = Map.insert storeIdx e store
+     in modify $ \s -> s { store = store', storeIndex = 1 + storeIdx } 
+    return storeIdx
+
 -- | Looks up location in store to get the value
 lookupStore :: SIdentifier -> Interpreter IExpression
 lookupStore l = gets store >>= \store ->
@@ -177,11 +216,11 @@ lookupStore l = gets store >>= \store ->
         Nothing -> throwError $ "Unknown location " ++ show l
 
 -- | Looks up a reference in the environment to find value in store
-lookupVariableValue :: SIdentifier -> Interpreter (IExpression, Maybe SExpression)
+lookupVariableValue :: SIdentifier -> Interpreter IExpression
 lookupVariableValue n = topObjectScope >>= \os ->
     case Map.lookup n os of
-        Just (loc, offset) -> lookupStore loc >>= \e' ->
-            return (e', offset)
+        Just loc -> lookupStore loc >>= \e' ->
+            return e'
         Nothing -> getIdentifierName n >>= \vn -> 
             throwError $ "Variable '" ++ vn ++ "' has not been defined"
 
@@ -267,18 +306,23 @@ evalBinOp binop e1 e2 = do
 -- | Evaluates a scoped expression to an interpreted expression
 evalExpression :: SExpression -> Interpreter IExpression
 evalExpression (Constant n) = return $ Const n
-evalExpression (Variable v) = lookupVariableValue v >>= \(v', _) -> return v'
+evalExpression (Variable v) = lookupVariableValue v
 evalExpression (ArrayElement (v, e)) = do
-    (v', _) <- lookupVariableValue v
+    v' <- lookupVariableValue v
     e' <- evalExpression e
     case (v', e') of
         (IntegerArray ia, Const p) ->
             checkOutOfBounds v ia p >>
-                let v = ia !! fromIntegral p
-                 in return $ Const v
+                let vl = ia !! fromIntegral p
+                 in lookupStore vl >>=
+                     \case
+                        Const v -> return $ Const v
+                        err -> showValueString [] err >>= \err' ->
+                            throwError $ "Location points to non-integer: " ++ err'
         (ObjectArray oa, Const p) ->
             checkOutOfBounds v oa p >>
-                lookupStore (oa !! fromIntegral p) >>=
+                let ol = oa !! fromIntegral p
+                 in lookupStore ol >>=
                     \case
                         Object tn o -> return $ Object tn o
                         err -> showValueString [] err >>= \err' ->
@@ -294,45 +338,30 @@ evalAssign n modop e = do
     n' <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
-        ((Const v1, _), Const v2) ->
+        (Const v1, Const v2) ->
             let res = Const $ evalModOp modop v1 v2
              in updateBinding n res
-        ((IntegerArray _, Just p), _) ->
-            evalAssignArrElem (n, p) modop e
-        ((Const v1, _), IntegerArray ia) -> do
-            (n2, p) <- lookupIndex e
-            checkOutOfBounds n2 ia p >>
-                let v2 = ia !! fromIntegral p
-                    res = Const $ evalModOp modop v1 v2
-                 in updateBinding n res
         _ -> getIdentifierName n >>= \vn ->
                 throwError $ "Operation '" ++ show modop ++ "' not possible for '" ++ vn ++ "' with '" ++ show e' ++ "'"
     where evalModOp ModAdd = (+)
           evalModOp ModSub = (-)
           evalModOp ModXor = xor
-          lookupIndex (Variable v) = lookupVariableValue v >>= \(_, m) -> 
-            case m of 
-                Just e -> evalExpression e >>=
-                    \case
-                        Const p -> return (v, p)
-                        _ -> getIdentifierName n >>= \vn ->
-                                throwError $ "Index given for '" ++ vn ++ "' is not an integer"
-                Nothing -> getIdentifierName n >>= \vn ->
-                            throwError $ "No index specified for '" ++ vn ++ "'"
 
 -- | Evaluates an array index assignment of a scoped expression
 evalAssignArrElem :: (SIdentifier, SExpression) -> ModOp -> SExpression -> Interpreter ()
 evalAssignArrElem (n, e1) modop e2 = do
-    (n', _) <- lookupVariableValue n
+    n' <- lookupVariableValue n
     e1' <- evalExpression e1
     e2' <- evalExpression e2
     case (n', e1', e2') of
         (IntegerArray ia, Const p, Const v2) ->
             checkOutOfBounds n ia p >>
-                let v = ia !! fromIntegral p
-                    res = evalModOp modop v v2
-                    ia' = replaceNth p res ia
-                in updateBinding n $ IntegerArray ia'
+                let vl = ia !! fromIntegral p
+                 in lookupStore vl >>= 
+                     \case 
+                        Const v1 -> updateStore vl $ Const (evalModOp modop v1 v2)
+                        _ -> getIdentifierName n >>= \vn ->
+                            throwError $ "Unable to perform array assignment for '" ++ vn ++ "[" ++ show p ++ "]'"
         _ -> getIdentifierName n >>= \vn ->
                 throwError $ "Operation '" ++ show modop ++ "' not possible for '" ++ vn ++ "'"
     where evalModOp ModAdd = (+)
@@ -341,54 +370,61 @@ evalAssignArrElem (n, e1) modop e2 = do
 
 -- | Evaluates a swap between values in arrays and variables, and arrays to arrays
 swapArrayValues :: (SIdentifier, IExpression) -> Maybe Integer -> (SIdentifier, IExpression) -> Maybe Integer -> Interpreter ()
-swapArrayValues (n1, IntegerArray ia1) (Just p1) (n2, Const v2) Nothing =
+swapArrayValues (n1, IntegerArray ia1) (Just p1) (n2, Const _) Nothing =
     checkOutOfBounds n1 ia1 p1 >>
-        let v1 = ia1 !! fromIntegral p1
-            ia1' = replaceNth p1 v2 ia1
-         in updateBinding n1 (IntegerArray ia1') >> 
-                updateBinding n2 (Const v1)
-swapArrayValues (n1, Const v1) Nothing (n2, IntegerArray ia2) (Just p2) =
+        getBindingLocation n2 >>= \l2 ->
+            let vl1 = ia1 !! fromIntegral p1
+                ia1' = replaceNth p1 l2 ia1
+            in lookupStore vl1 >>=
+                \case
+                    Const _ -> 
+                        updateBinding n1 (IntegerArray ia1') >> 
+                            updateLocation n2 vl1
+                    _ -> throwSwapValueMismatch (n1, Just p1) (n2, Nothing) "integer"
+swapArrayValues (n1, Const _) Nothing (n2, IntegerArray ia2) (Just p2) =
     checkOutOfBounds n2 ia2 p2 >>
-        let v2 = ia2 !! fromIntegral p2
-            ia2' = replaceNth p2 v1 ia2
-         in updateBinding n1 (Const v2) >> 
-                updateBinding n2 (IntegerArray ia2')
+        getBindingLocation n1 >>= \l1 ->
+            let vl2 = ia2 !! fromIntegral p2
+                ia2' = replaceNth p2 l1 ia2
+            in lookupStore vl2 >>=
+                \case
+                    Const _ -> 
+                        updateLocation n1 vl2 >>
+                            updateBinding n2 (IntegerArray ia2')
+                    _ -> throwSwapValueMismatch (n1, Nothing) (n2, Just p2) "integer"
 swapArrayValues (n1, IntegerArray ia1) (Just p1) (n2, IntegerArray ia2) (Just p2) =
     checkOutOfBounds n1 ia1 p1 >> checkOutOfBounds n2 ia2 p2 >>
-        let v1 = ia1 !! fromIntegral p1
-            v2 = ia2 !! fromIntegral p2
-            ia1' = replaceNth p1 v2 ia1
-            ia2' = replaceNth p2 v1 ia2
-         in updateBinding n1 (IntegerArray ia1') >> 
-                updateBinding n2 (IntegerArray ia2')
+        let vl1 = ia1 !! fromIntegral p1
+            vl2 = ia2 !! fromIntegral p2
+            ia1' = replaceNth p1 vl2 ia1
+            ia2' = replaceNth p2 vl1 ia2
+         in do
+            v1 <- lookupStore vl1
+            v2 <- lookupStore vl2
+            case (v1, v2) of 
+                (Const _, Const _) -> updateBinding n1 (IntegerArray ia1') >> 
+                    updateBinding n2 (IntegerArray ia2')
+                _ -> throwSwapValueMismatch (n1, Just p1) (n2, Just p2) "integer"
 swapArrayValues (n1, ObjectArray oa1) (Just p1) (n2, Object tn2 _) Nothing =
     checkOutOfBounds n1 oa1 p1 >> do
-        (l2, _) <- getBindingLocation n2
+        l2 <- getBindingLocation n2
         let ol1 = oa1 !! fromIntegral p1
             oa1' = replaceNth p1 l2 oa1
          in lookupStore ol1 >>= 
              \case 
-                (Object tn1 _) -> assertSwapTypes (tn1, n1) (tn2, n2) >>
-                    updateBinding n1 (ObjectArray oa1') >> updateLocation n2 (ol1, Nothing)
-                _ -> do
-                    vn1 <- getIdentifierName n1
-                    vn2 <- getIdentifierName n2
-                    throwError $ "Trying to swap between object and non-object in '" ++ 
-                        vn1 ++ "[" ++ show p1 ++ "] <=> " ++ vn2 ++ "'"
+                (Object tn1 _) -> assertObjectTypes (tn1, n1) (tn2, n2) >>
+                    updateBinding n1 (ObjectArray oa1') >> updateLocation n2 ol1
+                _ -> throwSwapValueMismatch (n1, Just p1) (n2, Nothing) "object"
 swapArrayValues (n1, Object tn1 _) Nothing (n2, ObjectArray oa2) (Just p2) =
     checkOutOfBounds n1 oa2 p2 >> do
-        (l1, _) <- getBindingLocation n1
+        l1 <- getBindingLocation n1
         let ol2 = oa2 !! fromIntegral p2
             oa2' = replaceNth p2 l1 oa2
          in lookupStore ol2 >>= 
              \case 
-                (Object tn2 _) -> assertSwapTypes (tn1, n1) (tn2, n2) >>
-                    updateLocation n1 (ol2, Nothing) >> updateBinding n2 (ObjectArray oa2')
-                _ -> do
-                    vn1 <- getIdentifierName n1
-                    vn2 <- getIdentifierName n2
-                    throwError $ "Trying to swap between object and non-object in '" ++ 
-                        vn1 ++ " <=> " ++ vn2 ++ "[" ++ show p2 ++ "]'"
+                (Object tn2 _) -> assertObjectTypes (tn1, n1) (tn2, n2) >>
+                    updateLocation n1 ol2 >> updateBinding n2 (ObjectArray oa2')
+                _ -> throwSwapValueMismatch (n1, Nothing) (n2, Just p2) "object"
 swapArrayValues (n1, ObjectArray oa1) (Just p1) (n2, ObjectArray oa2) (Just p2) =
     checkOutOfBounds n1 oa1 p1 >> checkOutOfBounds n2 oa2 p2 >>
         let ol1 = oa1 !! fromIntegral p1
@@ -399,42 +435,56 @@ swapArrayValues (n1, ObjectArray oa1) (Just p1) (n2, ObjectArray oa2) (Just p2) 
             o1 <- lookupStore ol1
             o2 <- lookupStore ol2
             case (o1, o2) of
-                (Object tn1 _, Object tn2 _) -> assertSwapTypes (tn1, n1) (tn2, n2) >>
+                (Object tn1 _, Object tn2 _) -> assertObjectTypes (tn1, n1) (tn2, n2) >>
                     updateBinding n1 (ObjectArray oa1') >> updateBinding n2 (ObjectArray oa2')
-                _ -> do
-                    vn1 <- getIdentifierName n1
-                    vn2 <- getIdentifierName n2
-                    throwError $ "Trying to swap between object and non-object in '" ++ 
-                        vn1 ++ "[" ++ show p1 ++ "] <=> " ++ vn2 ++ "[" ++ show p2 ++ "]'"
+                _ -> throwSwapValueMismatch (n1, Just p1) (n2, Just p2) "object"
 swapArrayValues (n1, _) _ (n2, _) _ = do
     vn1 <- getIdentifierName n1
     vn2 <- getIdentifierName n2
     throwError $ "Unable to swap references between '" ++ vn1 ++ "' and '" ++ vn2 ++ "'"
 
+-- | Runtime error: Throws an error stating that the value types of the swapping location does not match
+throwSwapValueMismatch :: (SIdentifier, Maybe Integer) -> (SIdentifier, Maybe Integer) -> String -> Interpreter ()
+throwSwapValueMismatch (n1, Nothing) (n2, Just p2) t = do
+    vn1 <- getIdentifierName n1
+    vn2 <- getIdentifierName n2
+    throwError $ "Trying to swap between " ++ t ++ " and non-" ++ t ++ " in '" ++ 
+        vn1 ++ " <=> " ++ vn2 ++ "[" ++ show p2 ++ "]'"
+throwSwapValueMismatch (n1, Just p1) (n2, Nothing) t = do
+    vn1 <- getIdentifierName n1
+    vn2 <- getIdentifierName n2
+    throwError $ "Trying to swap between " ++ t ++ " and non-" ++ t ++ " in '" ++ 
+        vn1 ++ "[" ++ show p1 ++ "] <=> " ++ vn2 ++ "'"
+throwSwapValueMismatch (n1, Just p1) (n2, Just p2) t = do
+    vn1 <- getIdentifierName n1
+    vn2 <- getIdentifierName n2
+    throwError $ "Trying to swap between " ++ t ++ " and non-" ++ t ++ " in '" ++ 
+        vn1 ++ "[" ++ show p1 ++ "] <=> " ++ vn2 ++ "[" ++ show p2 ++ "]'"
+
 -- | Asserts that the types used for swapping are equal
-assertSwapTypes :: (TypeName, SIdentifier) -> (TypeName, SIdentifier) -> Interpreter ()
-assertSwapTypes (tn1, n1) (tn2, n2) =
+assertObjectTypes :: (TypeName, SIdentifier) -> (TypeName, SIdentifier) -> Interpreter ()
+assertObjectTypes (tn1, n1) (tn2, n2) =
     when (tn1 /= tn2) $ do 
         vn1 <- getIdentifierName n1
         vn2 <- getIdentifierName n2
-        throwError $ "Unable to swap between '" ++ vn1 ++ "' and '" ++ vn2 ++ "'\n" ++
-            "Types '" ++ tn1 ++ "' and '" ++ tn2 ++ "' does not match"
+        throwError $ "Mismatch between variable types of '" ++ vn1 ++ "' and '" ++ vn2 ++ "'\n" ++
+            "Types '" ++ tn1 ++ "' and '" ++ tn2 ++ "'"
 
 -- | Evaluates a swap between variables
 evalSwap :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpression) -> Interpreter ()
 evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
     where performSwap (n1, Just e1) (n2, Nothing) = do
             e1' <- evalExpression e1
-            (n1', _) <- lookupVariableValue n1
-            (n2', _) <- lookupVariableValue n2
+            n1' <- lookupVariableValue n1
+            n2' <- lookupVariableValue n2
             case e1' of
                 Const p1 -> swapArrayValues (n1, n1') (Just p1) (n2, n2') Nothing
                 _ -> getIdentifierName n1 >>= \vn1 ->
                     throwError $ "Unable to find array index for swapping in '" ++ vn1 ++ "'"
           performSwap (n1, Nothing) (n2, Just e2) = do
             e2' <- evalExpression e2
-            (n1', _) <- lookupVariableValue n1
-            (n2', _) <- lookupVariableValue n2
+            n1' <- lookupVariableValue n1
+            n2' <- lookupVariableValue n2
             case e2' of
                 Const p2 -> swapArrayValues (n1, n1') Nothing (n2, n2') (Just p2)
                 _ -> getIdentifierName n2 >>= \vn ->
@@ -442,8 +492,8 @@ evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
           performSwap (n1, Just e1) (n2, Just e2) = do
             e1'  <- evalExpression e1
             e2'  <- evalExpression e2
-            (n1', _) <- lookupVariableValue n1
-            (n2', _) <- lookupVariableValue n2
+            n1' <- lookupVariableValue n1
+            n2' <- lookupVariableValue n2
             case (e1', e2') of
                 (Const p1, Const p2) -> swapArrayValues (n1, n1') (Just p1) (n2, n2') (Just p2)
                 (_, Const _) -> getIdentifierName n1 >>= \vn1 ->
@@ -460,14 +510,14 @@ evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
             updateLocation n1 l2 >> updateLocation n2 l1
 
 -- | Updates every reference to a store location in the objectscope list
-updateLocation :: SIdentifier -> (Location, Maybe SExpression) -> Interpreter ()
+updateLocation :: SIdentifier -> Location -> Interpreter ()
 updateLocation n l = do
     os <- gets objectScope
     rs <- gets referenceScope
     let os' = updateObjectScopeLoc n l os rs
      in modify $ \s -> s { objectScope = os' }
 
-    where updateObjectScopeLoc :: SIdentifier -> (Location, Maybe SExpression) -> ObjectScope -> ReferenceScope -> ObjectScope
+    where updateObjectScopeLoc :: SIdentifier -> Location -> ObjectScope -> ReferenceScope -> ObjectScope
           updateObjectScopeLoc n l (o:ostack) (r:rstack) = 
               let os' = Map.adjust (const l) n o
                in case Map.lookup n r of
@@ -511,7 +561,7 @@ evalLocalBlock n e1 stmt e2 = do
     e1' <- evalExpression e1
     addObjectBinding n e1'
     mapM_ evalStatement stmt
-    (e1', _) <- lookupVariableValue n
+    e1' <- lookupVariableValue n
     e2' <- evalExpression e2
     if e1' == e2' then 
         removeReference n
@@ -549,13 +599,13 @@ evalLocalUncall m args = do
 evalObjectCall :: (SIdentifier, Maybe SExpression) -> MethodName -> [(SIdentifier, Maybe SExpression)] -> Interpreter ()
 evalObjectCall (n, Nothing) m args = lookupVariableValue n >>=
     \case
-        (Object tn oenv, _) -> do
+        Object tn oenv -> do
             enterObjectScope oenv
             (ps, stmt) <- getObjectMethod tn m
             evalCall args ps stmt
             oenv' <- leaveObjectScope
             addObjectBinding n $ Object tn oenv'
-        (Null, _) -> getIdentifierName n >>= \vn ->
+        Null -> getIdentifierName n >>= \vn ->
             throwError $ "Calling object '" ++ show (vn, n) ++ "::" ++ m ++ "'. Object has not been initialized"
         _ -> getIdentifierName n >>= \vn ->
             throwError $ "Unable to call object '" ++ vn ++ "'"
@@ -563,7 +613,7 @@ evalObjectCall (n, Just e) m args = do
     n' <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
-        ((ObjectArray oa, _), Const p) -> 
+        (ObjectArray oa, Const p) -> 
             checkOutOfBounds n oa p >>
                 let ol = oa !! fromIntegral p
                  in lookupStore ol >>= 
@@ -585,14 +635,14 @@ evalObjectCall (n, Just e) m args = do
 evalObjectUncall :: (SIdentifier, Maybe SExpression) -> MethodName -> [(SIdentifier, Maybe SExpression)] -> Interpreter ()
 evalObjectUncall (n, Nothing) m args = lookupVariableValue n >>=
     \case
-        (Object tn oenv, Nothing) -> do
+        Object tn oenv -> do
             enterObjectScope oenv
             (ps, stmt) <- getObjectMethod tn m
             stmt' <- reverse <$> mapM invertStatement stmt
             evalCall args ps stmt'
             oenv' <- leaveObjectScope
             addObjectBinding n $ Object tn oenv'
-        (Null, _) -> 
+        Null -> 
             getIdentifierName n >>= \vn ->
                 throwError $ "Uncalling object '" ++ show (vn, n) ++ "::" ++ m ++ "'. Object has not been initialized"
         _ -> getIdentifierName n >>= \vn ->
@@ -601,7 +651,7 @@ evalObjectUncall (n, Just e) m args = do
     n' <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
-        ((ObjectArray oa, _), Const p) -> 
+        (ObjectArray oa, Const p) -> 
             checkOutOfBounds n oa p >>
                 let ol = oa !! fromIntegral p
                  in lookupStore ol >>=
@@ -628,7 +678,7 @@ evalObjectConstruction tn (n, Nothing) = do
     let obj = Object tn o
      in addObjectBinding n obj
 evalObjectConstruction tn (n, Just e) = do
-    (n', _) <- lookupVariableValue n
+    n' <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
         (ObjectArray oa, Const p) ->
@@ -645,7 +695,7 @@ evalObjectConstruction tn (n, Just e) = do
 evalObjectDestruction :: (SIdentifier, Maybe SExpression) -> Interpreter ()
 evalObjectDestruction (n, Nothing) = addObjectBinding n Null
 evalObjectDestruction (n, Just e) = do
-    (n', _) <- lookupVariableValue n
+    n' <- lookupVariableValue n
     e' <- evalExpression e
     case (n', e') of
         (ObjectArray oa, Const p) -> 
@@ -675,20 +725,28 @@ evalUnCopyReference ArrayElementType _ = throwError "Uncopying is not supported 
 evalUnCopyReference NilType _ =          throwError "Uncopying is not supported for nil"
 evalUnCopyReference _ (n, e) = do
     n' <- lookupVariableValue n
-    case (n', e) of
-        ((ObjectArray oa, _), Just e) -> do
+    evalUnCopyReference' n n' e
+    where evalUnCopyReference' n (ObjectArray oa) (Just e) = do
             e' <- evalExpression e
             case e' of
-                Const p ->
-                    checkOutOfBounds n oa p >>
-                        let ol = oa !! fromIntegral p
-                         in updateStore ol Null
+                Const p -> do
+                    checkOutOfBounds n oa p
+                    sidx <- addToStore Null
+                    let oa' = replaceNth p sidx oa
+                     in updateBinding n $ ObjectArray oa'
                 _ -> getIdentifierName n >>= \vn ->
                         throwError $ "No index was given to array '" ++ vn ++ "'"
-        ((Object _ _, _), _) -> addObjectBinding n Null
-        ((IntegerArray _, _), _) -> throwError "Uncopying is not supported for integers in arrays"
-        _ -> getIdentifierName n >>= \vn ->
-                throwError $ "Unable to find valid object to for '" ++ vn ++ "'"
+          evalUnCopyReference' n (ObjectArray _) Nothing = addObjectBinding n Null
+          evalUnCopyReference' n (Object _ _) Nothing = addObjectBinding n Null
+          evalUnCopyReference' _ (IntegerArray _) _ = throwError "Uncopying is not supported for integer arrays"
+          evalUnCopyReference' n _ Nothing = getIdentifierName n >>= \vn ->
+            throwError $ "Unable to find valid object for uncopying in variable '" ++ vn ++ "'"
+          evalUnCopyReference' n _ (Just e) = do
+            vn <- getIdentifierName n
+            e' <- evalExpression e
+            case e' of
+                Const p -> throwError $ "Unable to find valid object for uncopying in index '" ++ vn ++ "[" ++ show p ++ "]'"
+                _ -> throwError $ "Unable to find valid object for uncopying in variable '" ++ vn ++ "'"
 
 -- | Evaluation of constructing an int/object array
 evalArrayConstruction :: SExpression -> SIdentifier -> Interpreter ()
@@ -696,19 +754,15 @@ evalArrayConstruction e n = do
     e' <- evalExpression e
     t <- getType n
     case (t, e') of
-        (IntegerArrayType, Const len)  -> addObjectBinding n (IntegerArray $ replicate (fromIntegral len) 0)
-        (ObjectArrayType _, Const len) -> do
-            let arrLen = fromIntegral len
-             in replicateM arrLen (addToStore Null) >>= \ols ->
+        (IntegerArrayType, Const len) ->
+            let al = fromIntegral len
+             in replicateM al (addToStore $ Const 0) >>= \cls ->
+                    addObjectBinding n (IntegerArray cls)
+        (ObjectArrayType _, Const len) ->
+            let al = fromIntegral len
+             in replicateM al (addToStore Null) >>= \ols ->
                     addObjectBinding n (ObjectArray ols)
         _ -> throwError $ "Unsupported array datatype " ++ show t
-    where addToStore :: IExpression -> Interpreter SIdentifier
-          addToStore e = do
-            store <- gets store
-            storeIdx <- gets storeIndex
-            let store' = Map.insert storeIdx e store
-             in modify $ \s -> s { store = store', storeIndex = 1 + storeIdx } 
-            return storeIdx
 
 -- | Evaluation of destructing an int/object array
 evalArrayDeconstruction :: SIdentifier -> Interpreter ()
@@ -835,7 +889,7 @@ getIdentifierName n = gets (symbolTable . saState) >>= \st ->
 showEnvironment :: [Env] -> Env -> Interpreter [(Identifier, String)]
 showEnvironment vst env =
     mapM
-      ( \(k, (l, _)) ->
+      ( \(k, l) ->
           getIdentifierName k
             >>= \k' ->
               lookupStore l
@@ -847,7 +901,9 @@ showEnvironment vst env =
 -- | Converts environment AST to more readable format by expanding data fields
 showValueString :: [Env] -> IExpression -> Interpreter String
 showValueString _ (Const v) = return $ show v
-showValueString _ (IntegerArray ia) = return $ show ia
+showValueString _ (IntegerArray ia) = do
+    ia' <- mapM (lookupStore >=> showValueString []) ia
+    return $ "[" ++ intercalate ", " ia' ++ "]"
 showValueString vst (Object tn o) = 
     if o `elem` vst then
         return ""
