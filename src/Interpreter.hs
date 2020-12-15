@@ -950,9 +950,6 @@ evalProgram = do
     env <- leaveObjectScope
     printAST <$> showEnvironment [] env
 
--- interpret :: (SProgram, SAState) -> Except String String
--- interpret (p, s) = return $ printAST p ++ printAST s
-
 -- | Interpretation using a scoped program and scoped analysis state
 interpret :: (SProgram, SAState) -> Except String String
-interpret (p, s) = fst <$> runStateT (runInt evalProgram) (initialState p s) -- printAST . snd <$> -- for printing state
+interpret (p, s) = fst <$> runStateT (runInt evalProgram) (initialState p s)
