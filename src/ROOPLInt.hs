@@ -32,6 +32,7 @@ data Options =
         output :: String
     }
 
+-- | Default options
 defaultOpts :: Options
 defaultOpts =
     Options {
@@ -40,14 +41,16 @@ defaultOpts =
         output = ""
     }
 
+-- | Common usage string
 usage :: String
-usage = "usage: ROOPLInt [-i|-c] input.rplpp [output.pal]\n\
+usage = "usage: ROOPLInt [-i|-c|-tN] input.rplpp [-o<output>]\n\
         \options:\n\
         \ -i:           invert program\n\
         \ -c:           compile program\n\
         \ -o<FILENAME>: output compiled program (only when -c or -i is used)\n\
         \ -tN:          timeout after N seconds"
 
+-- | Parses and asserting input arguments
 parseArgs :: IO (Maybe (String, Options))
 parseArgs = do
     args <- getArgs
@@ -59,14 +62,17 @@ parseArgs = do
             Left err -> putStrLn err >> return Nothing
             Right opts -> return $ Just (head fname, opts)
 
+-- | Asserts that only one input method, i.e. filename or stdin, is defined
 assertInputMethod :: [String] -> IO ()
 assertInputMethod fname = do
     when (null fname) (error $ "No file or input method specified. Specify one file or '-' to use stdin\n" ++ usage)
     when (length fname > 1) (error $ "More than one input method specified. Specify one file or '-' to use stdin\n" ++ usage)
 
+-- | Check input list for valid arguments
 checkFlags :: [String] -> Either Error Options
 checkFlags = foldM setOption defaultOpts
 
+-- | Sets fields in the `Option` record
 setOption :: Options -> String -> Either Error Options
 setOption opts "-i" = return $ opts { runOpt = Invert }
 setOption opts "-c" = return $ opts { runOpt = Compile }
@@ -77,19 +83,22 @@ setOption opts ('-':'t':time) =
         _          -> Left "Non-integer provided in the -t option"
 setOption _ f = Left $ "invalid option: " ++ f
 
-getFileContent :: String -> IO String            
-getFileContent "-" = getContents
-getFileContent fname = do
+-- | Gets file content from file or stdin
+loadContent :: String -> IO String
+loadContent "-" = getContents
+loadContent fname = do
     handle <- openFile fname ReadMode
     hGetContents handle
 
-writeOut :: String -> String -> String -> IO ()
-writeOut "-" "" content = putStrLn content
-writeOut defaultName "" content =
+-- | Writes output to file or stdout
+writeOutput :: String -> String -> String -> IO ()
+writeOutput "-" "" content = putStrLn content
+writeOutput defaultName "" content =
     let fname = head (splitOn "." defaultName) ++ "-inverted.rplpp"
      in writeFile fname content
-writeOut _ outfile content = writeFile outfile content
+writeOutput _ outfile content = writeFile outfile content
 
+-- | Backend parsing and analysis
 parseAndAnalysis :: String -> Except Error (SProgram, SAState)
 parseAndAnalysis s =
     parseString s
@@ -97,18 +106,21 @@ parseAndAnalysis s =
     >>= scopeAnalysis
     >>= typeCheck
 
+-- | Interprets the parsed and analyzed program
 interpretProgram :: String -> Either Error String
 interpretProgram s =
     runExcept $
     parseAndAnalysis s
     >>= interpret
 
+-- | Inverts the input program
 invertProgram :: String -> Either Error String
 invertProgram s =
     runExcept $
     parseAndAnalysis s
     >>= invert
 
+-- | Compiles the parsed and analyzed program
 compileProgram :: String -> Either Error PISA.Program
 compileProgram s =
     runExcept $
@@ -122,18 +134,18 @@ main =
         case args of
             -- Interpretation
             Just (file, opts@Options { runOpt = Interpret }) ->
-                getFileContent file >>= \input -> do
+                loadContent file >>= \input -> do
                     res <- timeout (timeOut opts) (return $ interpretProgram input)
                     case res of
                         Nothing -> exitWith $ ExitFailure 100
                         Just res' -> either (hPutStrLn stderr) putStrLn res'
             -- Invert
             Just (file, Options { runOpt = Invert, output = outfile }) ->
-                getFileContent file >>= \input ->
-                    either (hPutStrLn stderr) (writeOut file outfile) $ invertProgram input
+                loadContent file >>= \input ->
+                    either (hPutStrLn stderr) (writeOutput file outfile) $ invertProgram input
             -- Compile
             Just (file, Options { runOpt = Compile, output = outfile }) ->
-                getFileContent file >>= \input ->
-                    either (hPutStrLn stderr) (writeOut file outfile . showProgram) $ compileProgram input
+                loadContent file >>= \input ->
+                    either (hPutStrLn stderr) (writeOutput file outfile . showProgram) $ compileProgram input
             _ -> putStrLn usage
             
