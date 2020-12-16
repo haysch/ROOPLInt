@@ -5,7 +5,7 @@ synopsis:             ROOPL++ Interpreter
 license:              MIT
 license-file:         LICENSE
 homepage:             https://github.com/haysch/ROOPLInt
-author:               Lasse Hay-Schmidt (Interpreter) & Martin Holm Cservenka (backbone)
+author:               Lasse Hay-Schmidt (interpreter/inverter) & Martin Holm Cservenka (backend)
 maintainer:           lasse.hay.schmidt@gmail.com
 category:             Language
 -- copyright:
