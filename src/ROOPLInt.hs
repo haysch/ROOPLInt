@@ -43,7 +43,7 @@ defaultOpts =
 
 -- | Common usage string
 usage :: String
-usage = "usage: ROOPLInt [-i|-c|-tN] input.rplpp [-o<output>]\n\
+usage = "usage: ROOPLInt [-i | -c | -tN] <input>.rplpp [-o<output>]\n\
         \options:\n\
         \ -i:           invert program\n\
         \ -c:           compile program\n\
@@ -54,7 +54,7 @@ usage = "usage: ROOPLInt [-i|-c|-tN] input.rplpp [-o<output>]\n\
 parseArgs :: IO (Maybe (String, Options))
 parseArgs = do
     args <- getArgs
-    when (null args) (error $ "Supply input filename.\n" ++ usage)
+    when (null args) (putStrLn ("Supply input filename.\n" ++ usage) >> exitFailure)
     let (flgs, fname) = partition (\a -> head a == '-' && length a > 1) args
      in do
          assertInputMethod fname
@@ -65,8 +65,8 @@ parseArgs = do
 -- | Asserts that only one input method, i.e. filename or stdin, is defined
 assertInputMethod :: [String] -> IO ()
 assertInputMethod fname = do
-    when (null fname) (error $ "No file or input method specified. Specify one file or '-' to use stdin\n" ++ usage)
-    when (length fname > 1) (error $ "More than one input method specified. Specify one file or '-' to use stdin\n" ++ usage)
+    when (null fname) (putStrLn ("No file or input method specified. Specify one file or '-' to use stdin\n" ++ usage) >> exitFailure)
+    when (length fname > 1) (putStrLn ("More than one input method specified. Specify one file or '-' to use stdin\n" ++ usage) >> exitFailure)
 
 -- | Check input list for valid arguments
 checkFlags :: [String] -> Either Error Options
@@ -138,14 +138,14 @@ main =
                     res <- timeout (timeOut opts) (return $ interpretProgram input)
                     case res of
                         Nothing -> exitWith $ ExitFailure 100
-                        Just res' -> either (hPutStrLn stderr) putStrLn res'
+                        Just res' -> either (\err -> putStrLn err >> exitWith (ExitFailure 1)) putStrLn res'
             -- Invert
             Just (file, Options { runOpt = Invert, output = outfile }) ->
                 loadContent file >>= \input ->
-                    either (hPutStrLn stderr) (writeOutput file outfile) $ invertProgram input
+                    either (\err -> putStrLn err >> exitWith (ExitFailure 1)) (writeOutput file outfile) $ invertProgram input
             -- Compile
             Just (file, Options { runOpt = Compile, output = outfile }) ->
                 loadContent file >>= \input ->
-                    either (hPutStrLn stderr) (writeOutput file outfile . showProgram) $ compileProgram input
+                    either (\err -> putStrLn err >> exitWith (ExitFailure 1)) (writeOutput file outfile . showProgram) $ compileProgram input
             _ -> putStrLn usage
             
