@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>ROOPL Playground</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Write and run ROOPL programs in your browser">
+    <meta name="author" content="Lasse Hay-Schmidt">
+
+    <link href="static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="static/css/playground.css" rel="stylesheet">
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="brand" href="">ROOPL Playground</a>
+          <ul class="nav pull-right">
+            <li><button id="run" class="btn btn-success"><i class="icon-play-circle icon-white"></i> Run</button></button></li>
+            <!-- <li><button id="share" class="btn"><i class="icon-share"></i> Share</button></button></li> -->
+            <li><a id="invert" href="#invert"><i class="icon-backward"></i> Invert</a></li>
+            <li><a id="compile" href="#compile"><i class="icon-random"></i> Compile</a></li>
+            <li class="dropdown">
+              <a class="dropdown-toggle" data-toggle="dropdown" href="#example">
+                Examples
+                <b class="caret"></b>
+              </a>
+              <ul class="dropdown-menu" id="examples">
+                <li><p class="li-section">Simple</p></li>
+                <li><a href="#examples/SimpleArithmetic">Arithmetic</a></li>
+                <li><a href="#examples/SimpleConditional">Conditional</a></li>
+                <li><a href="#examples/SimpleLoop">Loop</a></li>
+                <li><a href="#examples/SimpleMethodCall">Method Calling</a></li>
+                <li><p class="li-section">Complex</p></li>
+                <li><a href="#examples/ArrayUsageExample">Array Usage</a></li>
+                <li><a href="#examples/BinaryTree">Binary Tree</a></li>
+                <li><a href="#examples/DoublyLinkedList">Doubly Linked List</a></li>
+                <li><a href="#examples/Fibonacci">Fibonacci</a></li>
+                <li><a href="#examples/LinkedList">LinkedList</a></li>
+              </ul>
+            </li>
+            <li><a href="#about" data-toggle="modal">About</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="editor"></div>
+    <div id="output-pane">
+      <div class="output-container">
+        <button type="button" class="close">&times;</button>
+        <div class="executing">Executing <img src="static/img/spinner_16.gif"/></div>
+        <div id="output"></div>
+      </div>
+    </div>
+
+    <div id="about" class="modal hide fade">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+        <h3>About the ROOPL Playground</h3>
+      </div>
+      <div class="modal-body">
+        <p>The Playground lets you try out the ROOPL programming language in your browser without having to install anything. You are able to run, invert and compile a ROOPL program.</p>
+        <p>The ROOPL Playground has been created by Lasse Hay-Schmidt as part of a project outside course scope.</p>
+        <h3>Usage</h3>
+        <p>Code examples can be found in the <b>Examples</b> dropdown in the menu. These examples consists of some smaller and trivial programs, for showing syntax, and larger and more complex programs.</p>
+        <p>When running the code, the result is displayed in a pane below the code.</p>
+        <p>For program inversion, you can use the <b>Invert</b> button, which returns the inverted program.</p>
+        <p>Compilation of a ROOPL program to PISA is also possible by using the <b>Compile</b> button. This returns the compiled program as a file download as it is quite large (even for smaller programs).</p>
+        <!-- <p>If the program fails, the error will be show in red in the output pane. The error will explain you what went wrong and in which line, and give you useful information about the program state, for example it prints the main class variable store when the error occured.</p> -->
+      </div>
+      <div class="modal-footer">
+        <a href="#" class="btn" data-dismiss="modal" aria-hidden="true">Close</a>
+      </div>
+    </div>
+
+    <script src="static/js/jquery.min.js"></script>
+    <script src="static/js/bootstrap.min.js"></script>
+    <script src="static/js/ace/ace.js"></script>
+    <script src="static/js/playground.js"></script>
+  </body>
+</html>
