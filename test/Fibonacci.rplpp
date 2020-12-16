@@ -1,0 +1,31 @@
+// Paired Fibonacci
+
+// Robert Glueck and Masahiko Kawabe,
+// A Program Inverter for a Functional Language with Equality and Constructors, 2003.
+// p.260
+// Available at http://www.springerlink.com/content/d6y3578p6l8waqng/
+
+class Program
+    int n
+    int x1
+    int x2
+
+    method main()
+        n += 4
+        call fib()
+
+    // method main_bwd()
+    //     x1 += 5
+    //     x2 += 8
+    //     uncall fib()
+
+    method fib()
+        if n = 0 then
+            x1 += 1
+            x2 += 1
+        else
+            n -= 1
+            call fib()
+            x1 += x2
+            x1 <=> x2
+        fi x1 = x2
