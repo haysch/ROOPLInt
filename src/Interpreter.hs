@@ -533,7 +533,10 @@ evalConditional e1 s1 s2 e2 = do
         else mapM_ evalStatement s2
     e2' <- evalExpression e2
     when (e1' /= e2') $ -- test and assert not equal
-        throwError "Entry and exit assertion are not equal"
+        throwError $ "Exit assertion does not match entry. Should be " ++ show (isTrue e1')
+    where isTrue (Const 0) = False
+          isTrue (Const _) = True
+          isTrue _ = error "Input is not a valid boolean value"
 
 -- | Evaluates a loop statement
 evalLoop :: SExpression -> [SStatement] -> [SStatement] -> SExpression -> Interpreter ()
@@ -886,7 +889,7 @@ getIdentifierName n = gets (symbolTable . saState) >>= \st ->
         _ -> throwError $ "Identifier '" ++ show n ++ "' does not exist in symbol table"
 
 -- | Used for evaluating environment map to values. Uses a visitation list to avoid infinite recursion.
-showEnvironment :: [Env] -> Env -> Interpreter [(Identifier, String)]
+showEnvironment :: [Env] -> Env -> Interpreter [String]
 showEnvironment vst env =
     mapM
       ( \(k, l) ->
@@ -894,7 +897,7 @@ showEnvironment vst env =
             >>= \k' ->
               lookupStore l
                 >>= (showValueString vst 
-                    >=> (\v' -> return (k', v')))
+                    >=> (\v' -> return $ show k' ++ ": " ++ v'))
       )
       (Map.toList env)
 
@@ -903,19 +906,18 @@ showValueString :: [Env] -> IExpression -> Interpreter String
 showValueString _ (Const v) = return $ show v
 showValueString _ (IntegerArray ia) = do
     ia' <- mapM (lookupStore >=> showValueString []) ia
-    return $ "[" ++ intercalate ", " ia' ++ "]"
-showValueString vst (Object tn o) = 
+    return $ toArrayString ia'
+showValueString vst (Object _ o) = 
     if o `elem` vst then
         return ""
     else 
         showEnvironment (o : vst) o >>= \o' ->
-            let values = map (\(i, s) -> i ++ ": " ++ s) o'
-                valueString = intercalate ", " values
-            in return $ tn ++ " { " ++ valueString ++ " }"
+            let valueString = intercalate ", " o'
+             in return $ toObjectString valueString
 showValueString vst (ObjectArray oa) = 
     mapM (lookupStore >=> \l' -> showValueString vst l') oa 
-        >>= \oa' -> return $ "[" ++ intercalate ", " oa' ++ "]"
-showValueString _ Null = return "Nil"
+        >>= \oa' -> return $ toArrayString oa'
+showValueString _ Null = return "\"nil\""
 
 -- | Initializes an class object
 initializeObject :: TypeName -> [VariableDeclaration] -> Interpreter ()
@@ -948,7 +950,14 @@ evalProgram = do
     initializeObject mc fs
     evalMainMethod mm p
     env <- leaveObjectScope
-    printAST <$> showEnvironment [] env
+    out <- showEnvironment [] env
+    return $ toObjectString $ intercalate ", " out
+
+toObjectString :: String -> String
+toObjectString s = "{ " ++ s ++ " }"
+
+toArrayString :: [String] -> String
+toArrayString ss = "[" ++ intercalate ", " ss ++ "]"
 
 -- | Interpretation using a scoped program and scoped analysis state
 interpret :: (SProgram, SAState) -> Except String String
