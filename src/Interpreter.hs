@@ -23,7 +23,8 @@ data InterpreterState =
         objectScope :: ObjectScope,
         referenceScope :: ReferenceScope,
         store :: Store,
-        storeIndex :: SIdentifier
+        storeIndex :: SIdentifier,
+        invCache :: [(SIdentifier, [SStatement])]
     } deriving (Show, Eq)
 
 newtype Interpreter a = Interpreter { runInt :: StateT InterpreterState (Except String) a }
@@ -39,7 +40,8 @@ initialState p s =
         objectScope = [],
         referenceScope = [],
         store = Map.empty,
-        storeIndex = 0
+        storeIndex = 0,
+        invCache = []
     }
 
 -- | Replaces the n'th entry in a list
@@ -267,6 +269,17 @@ invertStatement (CopyReference tp n m) = return $ UnCopyReference tp n m
 invertStatement (UnCopyReference tp n m) = return $ CopyReference tp n m
 invertStatement (ArrayConstruction tpe n) = return $ ArrayDestruction tpe n
 invertStatement (ArrayDestruction tpe n) = return $ ArrayConstruction tpe n
+
+invertStatements :: SIdentifier -> [SStatement] -> Interpreter [SStatement]
+invertStatements i stmt = gets invCache >>= \iv ->
+    case lookup i iv of
+        Just stmt' -> return stmt'
+        Nothing -> do 
+            stmt' <- reverse <$> mapM invertStatement stmt
+            insertInverseStatement i stmt'
+            return stmt'
+    where insertInverseStatement :: SIdentifier -> [SStatement] -> Interpreter ()
+          insertInverseStatement i stmt = modify $ \s -> s { invCache = (i, stmt) : invCache s}
 
 -- | Evaluates a binary expression to a interpreted expression
 evalBinOp :: BinOp -> SExpression -> SExpression -> Interpreter IExpression
@@ -595,7 +608,7 @@ evalLocalCall m args = do
 evalLocalUncall :: SIdentifier -> [(SIdentifier, Maybe SExpression)] -> Interpreter ()
 evalLocalUncall m args = do
     (ps, stmt) <- getMethod m
-    stmt' <- reverse <$> mapM invertStatement stmt
+    stmt' <- invertStatements m stmt
     evalCall args ps stmt'
 
 -- | Evaluation of calling an object method
@@ -604,7 +617,7 @@ evalObjectCall (n, Nothing) m args = lookupVariableValue n >>=
     \case
         Object tn oenv -> do
             enterObjectScope oenv
-            (ps, stmt) <- getObjectMethod tn m
+            (_, ps, stmt) <- getObjectMethod tn m
             evalCall args ps stmt
             oenv' <- leaveObjectScope
             addObjectBinding n $ Object tn oenv'
@@ -623,7 +636,7 @@ evalObjectCall (n, Just e) m args = do
                     \case
                         Object tn oenv -> do
                             enterObjectScope oenv
-                            (ps, stmt) <- getObjectMethod tn m
+                            (_, ps, stmt) <- getObjectMethod tn m
                             evalCall args ps stmt
                             oenv' <- leaveObjectScope
                             updateStore ol $ Object tn oenv'
@@ -640,8 +653,8 @@ evalObjectUncall (n, Nothing) m args = lookupVariableValue n >>=
     \case
         Object tn oenv -> do
             enterObjectScope oenv
-            (ps, stmt) <- getObjectMethod tn m
-            stmt' <- reverse <$> mapM invertStatement stmt
+            (i, ps, stmt) <- getObjectMethod tn m
+            stmt' <- invertStatements i stmt
             evalCall args ps stmt'
             oenv' <- leaveObjectScope
             addObjectBinding n $ Object tn oenv'
@@ -661,8 +674,8 @@ evalObjectUncall (n, Just e) m args = do
                     \case 
                         Object tn oenv -> do
                             enterObjectScope oenv
-                            (ps, stmt) <- getObjectMethod tn m
-                            stmt' <- reverse <$> mapM invertStatement stmt
+                            (i, ps, stmt) <- getObjectMethod tn m
+                            stmt' <- invertStatements i stmt
                             evalCall args ps stmt'
                             oenv' <- leaveObjectScope
                             updateStore ol $ Object tn oenv'
@@ -765,7 +778,7 @@ evalArrayConstruction e n = do
             let al = fromIntegral len
              in replicateM al (addToStore Null) >>= \ols ->
                     addObjectBinding n (ObjectArray ols)
-        _ -> throwError $ "Unsupported array datatype " ++ show t
+        _ -> throwError $ "Unsupported array type " ++ show t
 
 -- | Evaluation of destructing an int/object array
 evalArrayDeconstruction :: SIdentifier -> Interpreter ()
@@ -858,7 +871,7 @@ getMethod m = do
             | otherwise = findMethod prgs m
 
 -- | Gets an object method that matches a class typename, where the class has contains a matching method name
-getObjectMethod :: TypeName -> MethodName -> Interpreter ([SVariableDeclaration], [SStatement])
+getObjectMethod :: TypeName -> MethodName -> Interpreter (SIdentifier, [SVariableDeclaration], [SStatement])
 getObjectMethod tn m = do
     prog <- gets program
     st <- gets (symbolTable . saState)
@@ -872,7 +885,7 @@ getObjectMethod tn m = do
                 case lookup i st of
                     Just (Method _ imn) -> 
                         if imn == mn then
-                            Just (ps, stmt)
+                            Just (i, ps, stmt)
                         else
                             findClassMethod cs st tns mn  
                     _ -> Nothing
