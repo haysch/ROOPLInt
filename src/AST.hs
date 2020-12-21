@@ -149,10 +149,9 @@ type ReferenceScope = [Ref]
 data IExpression = Const Integer
                  | Object TypeName Env
                  | IntegerArray [Location]
-                 | ObjectArray [Location]
+                 | ObjectArray TypeName [Location]
                  | Null
     deriving (Show, Eq)
-
 
 {-- Other Definitions --}
 type Offset = Integer
