@@ -966,5 +966,5 @@ toArrayString ss = "[" ++ intercalate ", " ss ++ "]"
 interpret :: (SProgram, SAState) -> Except String String
 interpret (p, s) = 
     case runExcept $ runStateT (runInt evalProgram) (initialState p s) of
-        Left err -> return $ show err
-        Right a -> return $ fst a
+        Left err -> throwError $ show err
+        Right res -> return $ fst res
