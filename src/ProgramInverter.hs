@@ -9,6 +9,7 @@ import Data.List
 
 import Debug.Trace (trace, traceShow)
 import Control.Monad.Reader
+import Stringify
 
 newtype ProgramInverter a = ProgramInverter { runIV :: ReaderT Int (Except String) a }
     deriving (Functor, Applicative, Monad, MonadReader Int, MonadError String)
@@ -25,36 +26,6 @@ newlines n a = intercalate "\n" $ map (tab n ++) a
 newlines2 :: Int -> [String] -> String
 newlines2 n a = intercalate "\n\n" $ map (tab n ++) a
 
-ivDataType :: DataType -> ProgramInverter String
-ivDataType IntegerType = return "int"
-ivDataType IntegerArrayType = return "int[]"
-ivDataType (ObjectType ot) = return ot
-ivDataType (ObjectArrayType ot) = return $ ot ++ "[]"
-ivDataType dt = throwError $ "Unsupported datatype: " ++ show dt
-
-ivModOp :: ModOp -> ProgramInverter String
-ivModOp ModAdd = return "-="
-ivModOp ModSub = return "+="
-ivModOp ModXor = return "^="
-
-ivBinOp :: BinOp -> ProgramInverter String
-ivBinOp Add     = return "+"
-ivBinOp Sub     = return "-"
-ivBinOp Xor     = return "^"
-ivBinOp Mul     = return "*"
-ivBinOp Div     = return "/"
-ivBinOp Mod     = return "%"
-ivBinOp BitAnd  = return "&"
-ivBinOp BitOr   = return "|"
-ivBinOp And     = return "&&"
-ivBinOp Or      = return "||"
-ivBinOp Lt      = return "<"
-ivBinOp Gt      = return ">"
-ivBinOp Eq      = return "="
-ivBinOp Neq     = return "!="
-ivBinOp Lte     = return "<="
-ivBinOp Gte     = return ">="
-
 ivExpression :: Expression -> ProgramInverter String
 ivExpression (Constant n) = return $ show n
 ivExpression (Variable v) = return v
@@ -63,10 +34,10 @@ ivExpression (ArrayElement (n, e)) =
         return $ n ++ "[" ++ e' ++ "]"
 ivExpression Nil = return "nil"
 ivExpression (Binary binop e1 e2) = do
-    binop' <- ivBinOp binop
     e1' <- ivExpression e1
     e2' <- ivExpression e2
-    return $ unwords [e1', binop', e2']
+    let binop' = stringifyBinOp binop
+     in return $ unwords [e1', binop', e2']
 
 ivVariable :: (Identifier, Maybe Expression) -> ProgramInverter String
 ivVariable (n, Nothing) = return n
@@ -75,13 +46,13 @@ ivVariable (n, Just e)  = ivExpression $ ArrayElement (n, e)
 ivStatement :: Statement -> ProgramInverter String
 ivStatement (Assign n modop e) = do
     e' <- ivExpression e
-    modop' <- ivModOp modop
-    return $ unwords [n, modop', e']
+    let modop' = stringifyModOp modop
+     in return $ unwords [n, modop', e']
 ivStatement (AssignArrElem e1 modop e2) = do
-    modop' <- ivModOp modop
     e1' <- ivExpression $ ArrayElement e1
     e2' <- ivExpression e2
-    return $ unwords [e1', modop', e2']
+    let modop' = stringifyModOp modop
+     in return $ unwords [e1', modop', e2']
 ivStatement (Swap v1 v2) = do
     v1' <- ivVariable v1 
     v2' <- ivVariable v2
@@ -114,11 +85,11 @@ ivStatement (ObjectBlock ot n s) = do
      in return $ intercalate "\n" [enc, s', exc]
 ivStatement (LocalBlock dt n e1 s e2) = do
     cl <- ask
-    dt' <- ivDataType dt
     e1' <- ivExpression e1
     s'  <- newlines cl <$> incLevel cl (mapM ivStatement $ reverse s)
     e2' <- ivExpression e2
-    let enc = unwords ["local", dt', n, "=", e2']
+    let dt' = stringifyDataType dt
+        enc = unwords ["local", dt', n, "=", e2']
         exc = tab (cl - 1) ++ unwords ["delocal", dt', n, "=", e1']
      in return $ intercalate "\n" [enc, s', exc]
 ivStatement (LocalCall m args) = do
@@ -146,15 +117,15 @@ ivStatement (ObjectDestruction tn o) = do
     o' <- ivVariable o
     return $ unwords ["new", tn, o']
 ivStatement (CopyReference dt v1 v2) = do
-    dt' <- ivDataType dt
     v1' <- ivVariable v1
     v2' <- ivVariable v2
-    return $ unwords ["uncopy", dt', v1', v2']
+    let dt' = stringifyDataType dt
+     in return $ unwords ["uncopy", dt', v1', v2']
 ivStatement (UnCopyReference dt v1 v2) = do
-    dt' <- ivDataType dt
     v1' <- ivVariable v1
     v2' <- ivVariable v2
-    return $ unwords ["copy", dt', v1', v2']
+    let dt' = stringifyDataType dt
+     in return $ unwords ["copy", dt', v1', v2']
 ivStatement (ArrayConstruction (tn, e) n) = do
     ivExpression (ArrayElement (tn, e)) >>= \arr ->
         return $ unwords ["delete", arr, n]
@@ -165,8 +136,8 @@ ivStatement Skip = return "skip"
 
 ivField :: VariableDeclaration -> ProgramInverter String
 ivField (GDecl dt fn) = do
-    dt' <- ivDataType dt
-    return $ unwords [dt', fn]
+    let dt' = stringifyDataType dt
+     in return $ unwords [dt', fn]
 
 ivMethod :: MethodDeclaration -> ProgramInverter String
 ivMethod (GMDecl mn [] b) = do

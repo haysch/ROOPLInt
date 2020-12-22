@@ -1,11 +1,11 @@
-// Paired Fibonacci
-
-// Robert Glueck and Masahiko Kawabe,
-// A Program Inverter for a Functional Language with Equality and Constructors, 2003.
-// p.260
-// Available at http://www.springerlink.com/content/d6y3578p6l8waqng/
-
 class Program
+    // Paired Fibonacci
+
+    // Robert Glueck and Masahiko Kawabe,
+    // A Program Inverter for a Functional Language with Equality and Constructors, 2003.
+    // p.260
+    // Available at http://www.springerlink.com/content/d6y3578p6l8waqng/
+
     int n
     int x1
     int x2
