@@ -22,7 +22,6 @@ data InterpreterState =
     InterpreterState {
         program :: SProgram,
         saState :: SAState,
-        caller :: Env,
         objectScope :: ObjectScope,
         referenceScope :: ReferenceScope,
         store :: Store,
@@ -39,7 +38,6 @@ initialState p s =
     InterpreterState {
         program = p,
         saState = s,
-        caller = Map.empty,
         objectScope = [],
         referenceScope = [],
         store = Map.empty,
@@ -70,6 +68,14 @@ replaceNth p v (x:xs)
     | p == 0  = v:xs
     | otherwise = x:replaceNth (p - 1) v xs
 
+-- | Returns the caller of the current object, by returning the previous object
+getCaller :: Interpreter Env
+getCaller = gets objectScope >>=
+    \case
+        (_:c:_) -> return c -- more than one object in scope, return caller of current object
+        [_] -> return Map.empty -- only one object in scope, main program object
+        [] -> return Map.empty -- no object in scope, nothing to call from
+
 -- | Returns the current object environment
 topObjectScope :: Interpreter Env
 topObjectScope = gets objectScope >>= 
@@ -93,17 +99,14 @@ topReferenceScope = gets referenceScope >>=
 
 -- | Enters a new object scope using an object's environment as reference and sets caller to the calling object's environment, if any exists
 enterObjectScope :: Env -> Interpreter ()
-enterObjectScope env = gets objectScope >>= \os ->
-    let clr = case os of
-                (o:_) -> o
-                [] -> Map.empty
-     in modify $ \s -> s { caller = clr, objectScope = env : objectScope s, referenceScope = Map.empty : referenceScope s }
+enterObjectScope env =
+    modify $ \s -> s { objectScope = env : objectScope s, referenceScope = Map.empty : referenceScope s }
 
 -- | Leaves the current object scope and returns its updated environment
 leaveObjectScope :: Interpreter Env
 leaveObjectScope = do
     curr <- topObjectScope
-    modify $ \s -> s { caller = Map.empty, objectScope = drop 1 (objectScope s), referenceScope = drop 1 (referenceScope s) }
+    modify $ \s -> s { objectScope = drop 1 (objectScope s), referenceScope = drop 1 (referenceScope s) }
     return curr
 
 -- | Creates an object by entering a new scope and initializing classfields. Returns the generated object environment.
@@ -148,7 +151,7 @@ addReference :: (SIdentifier, Maybe SExpression) -> (SIdentifier, Maybe SExpress
 addReference (n1, Nothing) (n2, Nothing) = do
     os <- topObjectScope
     rs <- topReferenceScope
-    cl <- gets caller
+    cl <- getCaller
     let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
      in case Map.lookup n1 unionEnvs of
         Just l ->
@@ -160,7 +163,7 @@ addReference (n1, Nothing) (n2, Nothing) = do
 addReference (n1, Just p1) (n2, Nothing) = do
     os <- topObjectScope
     rs <- topReferenceScope
-    cl <- gets caller
+    cl <- getCaller
     let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
      in case Map.lookup n1 unionEnvs of
         Just l -> lookupStore l >>= \e1 ->
@@ -178,7 +181,7 @@ addReference (n1, Just p1) (n2, Nothing) = do
 addReference (n1, Nothing) (n2, Just p2) = do
     os <- topObjectScope
     rs <- topReferenceScope
-    cl <- gets caller
+    cl <- getCaller
     let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
      in case Map.lookup n1 unionEnvs of
         Just l -> lookupVariableValue n2 >>= \e2 ->
@@ -197,7 +200,7 @@ addReference (n1, Nothing) (n2, Just p2) = do
 addReference (n1, Just p1) (n2, Just p2) = do
     os <- topObjectScope
     rs <- topReferenceScope
-    cl <- gets caller
+    cl <- getCaller
     let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
      in case Map.lookup n1 unionEnvs of
         Just _ -> do
@@ -527,7 +530,7 @@ evalSwap s1 s2 = if s1 == s2 then return () else performSwap s1 s2
             l2 <- getBindingLocation n2
             updateLocation n1 l2 >> updateLocation n2 l1
 
--- | Updates every reference to a store location in the objectscope list
+-- | Updates every reference to a store location in the object scope. Used for updating location in current object or arguments, if any.
 updateLocation :: SIdentifier -> Location -> Interpreter ()
 updateLocation n l = do
     os <- gets objectScope
@@ -536,6 +539,7 @@ updateLocation n l = do
      in modify $ \s -> s { objectScope = os' }
 
     where updateObjectScopeLoc :: SIdentifier -> Location -> ObjectScope -> ReferenceScope -> ObjectScope
+          updateObjectScopeLoc _ _ [] [] = []
           updateObjectScopeLoc n l (o:ostack) (r:rstack) = 
               let o' = Map.adjust (const l) n o
                in case Map.lookup n r of
