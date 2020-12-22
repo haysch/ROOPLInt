@@ -19,8 +19,8 @@ executable ROOPLInt
                       , ClassAnalyzer
                       , CodeGenerator
                       , Interpreter
-                      , Error
-                      , ErrorMessages
+                      , Exception
+                      , ExceptionMessages
                       , MacroExpander
                       , PISA
                       , Parser

@@ -14,8 +14,8 @@ import Control.Monad.State
 import Debug.Trace (trace, traceShow)
 import ClassAnalyzer
 import Data.List
-import Error
-import ErrorMessages
+import Exception
+import ExceptionMessages
 import Stringify
 
 data InterpreterState =
@@ -30,8 +30,8 @@ data InterpreterState =
         invCache :: [(SIdentifier, [SStatement])]
     } deriving (Show, Eq)
 
-newtype Interpreter a = Interpreter { runInt :: StateT InterpreterState (Except RooplError) a }
-    deriving (Functor, Applicative, Monad, MonadState InterpreterState, MonadError RooplError)
+newtype Interpreter a = Interpreter { runInt :: StateT InterpreterState (Except RooplException) a }
+    deriving (Functor, Applicative, Monad, MonadState InterpreterState, MonadError RooplException)
 
 -- | Creating the initial interpreter state
 initialState :: SProgram -> SAState -> InterpreterState
@@ -47,7 +47,14 @@ initialState p s =
         invCache = []
     }
 
--- | Traces a statement execution and catches any errors to provide a trace stack
+-- | Traces an expression execution and catches any errors to provide a trace
+traceExpression :: SExpression -> Interpreter a -> Interpreter a
+traceExpression e m = catchError m $ \err -> do
+    st <- gets (symbolTable . saState)
+    let e' = stringifySExpression e st
+     in throwError $ addTrace (TraceExpression e') err
+
+-- | Traces a statement execution and catches any errors to provide a trace
 traceStatement :: SStatement -> Interpreter a -> Interpreter a
 traceStatement stmt m = catchError m $ \err -> do
     mos <- mainObjectScope
@@ -289,6 +296,7 @@ invertStatement (UnCopyReference tp n m) = return $ CopyReference tp n m
 invertStatement (ArrayConstruction tpe n) = return $ ArrayDestruction tpe n
 invertStatement (ArrayDestruction tpe n) = return $ ArrayConstruction tpe n
 
+-- | Wrapper function for inverting statements by utilizing an inversion cache
 invertStatements :: SIdentifier -> [SStatement] -> Interpreter [SStatement]
 invertStatements i stmt = gets invCache >>= \iv ->
     case lookup i iv of
@@ -339,9 +347,10 @@ evalBinOp binop e1 e2 = do
 
 -- | Evaluates a scoped expression to an interpreted expression
 evalExpression :: SExpression -> Interpreter IExpression
-evalExpression (Constant n) = return $ Const n
-evalExpression (Variable v) = lookupVariableValue v
-evalExpression (ArrayElement (v, e)) = do
+evalExpression sexp@(Constant n) = traceExpression sexp $ return $ Const n
+evalExpression sexp@(Variable v) = traceExpression sexp $ lookupVariableValue v
+evalExpression sexp@(ArrayElement (v, e)) =
+    traceExpression sexp $ do
     v' <- lookupVariableValue v
     e' <- evalExpression e
     case (v', e') of
@@ -363,8 +372,8 @@ evalExpression (ArrayElement (v, e)) = do
                                 throwError $ typeMatchException [tn] (getExpressionDataType ie)
         _ -> getIdentifierName v >>= \vn ->
             throwError $ undefinedVariableException vn
-evalExpression AST.Nil = return Null
-evalExpression (Binary binop e1 e2) = evalBinOp binop e1 e2
+evalExpression Nil = traceExpression Nil $ return Null
+evalExpression sexp@(Binary binop e1 e2) = traceExpression sexp $ evalBinOp binop e1 e2
 
 -- | Evaluates a variable assignment of a scoped expression
 evalAssign :: SIdentifier -> ModOp -> SExpression -> Interpreter ()
@@ -752,24 +761,24 @@ evalArrayDeconstruction n = updateBinding n Null
 
 -- | Evaluation of an scoped statement
 evalStatement :: SStatement -> Interpreter ()
-evalStatement (Assign n modop e) = evalAssign n modop e
-evalStatement (AssignArrElem (n, e1) modop e2) = evalAssignArrElem (n, e1) modop e2
-evalStatement (Swap t1 t2) = evalSwap t1 t2
-evalStatement stmt@(Conditional e1 s1 s2 e2) = traceStatement stmt $ evalConditional e1 s1 s2 e2
-evalStatement (Loop e1 s1 s2 e2) = evalLoop e1 s1 s2 e2
-evalStatement (ObjectBlock tn n stmt) = evalObjectBlock tn n stmt
-evalStatement (LocalBlock _ n e1 stmt e2) = evalLocalBlock n e1 stmt e2
-evalStatement (LocalCall m args) = evalLocalCall m args
-evalStatement (LocalUncall m args) = evalLocalUncall m args
-evalStatement stmt@(ObjectCall o m args) = traceStatement stmt $ evalObjectCall o m args
-evalStatement (ObjectUncall o m args) = evalObjectUncall o m args
-evalStatement (ObjectConstruction tn (n, e)) = evalObjectConstruction tn (n, e)
-evalStatement (ObjectDestruction _ (n, e)) = evalObjectDestruction (n, e)
-evalStatement (CopyReference dt n m) = evalCopyReference dt n m
-evalStatement (UnCopyReference dt _ m) = evalUnCopyReference dt m
-evalStatement (ArrayConstruction (_, e) n) = evalArrayConstruction e n
-evalStatement (ArrayDestruction _ n) = evalArrayDeconstruction n
-evalStatement Skip = return ()
+evalStatement sstmt@(Assign n modop e)              = traceStatement sstmt $ evalAssign n modop e
+evalStatement sstmt@(AssignArrElem (n, e1) modop e2)= traceStatement sstmt $ evalAssignArrElem (n, e1) modop e2
+evalStatement sstmt@(Swap t1 t2)                    = traceStatement sstmt $ evalSwap t1 t2
+evalStatement sstmt@(Conditional e1 s1 s2 e2)       = traceStatement sstmt $ evalConditional e1 s1 s2 e2
+evalStatement sstmt@(Loop e1 s1 s2 e2)              = traceStatement sstmt $ evalLoop e1 s1 s2 e2
+evalStatement sstmt@(ObjectBlock tn n stmt)         = traceStatement sstmt $ evalObjectBlock tn n stmt
+evalStatement sstmt@(LocalBlock _ n e1 stmt e2)     = traceStatement sstmt $ evalLocalBlock n e1 stmt e2
+evalStatement sstmt@(LocalCall m args)              = traceStatement sstmt $ evalLocalCall m args
+evalStatement sstmt@(LocalUncall m args)            = traceStatement sstmt $ evalLocalUncall m args
+evalStatement sstmt@(ObjectCall o m args)           = traceStatement sstmt $ evalObjectCall o m args
+evalStatement sstmt@(ObjectUncall o m args)         = traceStatement sstmt $ evalObjectUncall o m args
+evalStatement sstmt@(ObjectConstruction tn (n, e))  = traceStatement sstmt $ evalObjectConstruction tn (n, e)
+evalStatement sstmt@(ObjectDestruction _ (n, e))    = traceStatement sstmt $ evalObjectDestruction (n, e)
+evalStatement sstmt@(CopyReference dt n m)          = traceStatement sstmt $ evalCopyReference dt n m
+evalStatement sstmt@(UnCopyReference dt _ m)        = traceStatement sstmt $ evalUnCopyReference dt m
+evalStatement sstmt@(ArrayConstruction (_, e) n)    = traceStatement sstmt $ evalArrayConstruction e n
+evalStatement sstmt@(ArrayDestruction _ n)          = traceStatement sstmt $ evalArrayDeconstruction n
+evalStatement Skip                                  = traceStatement Skip  $ return ()
 
 -- | Evaluation of the main method
 evalMainMethod :: SIdentifier -> SProgram -> Interpreter ()

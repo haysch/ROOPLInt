@@ -139,3 +139,10 @@ stringifySStatement (ArrayDestruction (tn, e) n) st =
         n' = lookupId n st
      in printf "delete %s[%s] %s" tn e' n'
 stringifySStatement Skip _ = "skip"
+
+stringifyIExpression :: IExpression -> String
+stringifyIExpression (Const _) = "int"
+stringifyIExpression (IntegerArray _) = "int[]"
+stringifyIExpression (Object tn _) = tn
+stringifyIExpression (ObjectArray tn _) = printf "%s[]" tn
+stringifyIExpression Null = "nil"
