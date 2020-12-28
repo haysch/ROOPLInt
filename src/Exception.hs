@@ -3,6 +3,8 @@ module Exception where
 import Data.List (intercalate)
 import Text.Printf (printf)
 
+-- Based on an idea from Jana https://github.com/mbudde/jana
+
 data Trace = Trace String
            | TraceExpression String
            | TraceStatement String String

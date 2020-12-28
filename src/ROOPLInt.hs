@@ -21,9 +21,12 @@ import Debug.Trace (trace, traceShow)
 
 type Error = String
 
+-- Following methods is based on work from Jana https://github.com/mbudde/jana
+-- `RunOpt`, `Options`, `usage`, `parseArgs`
+-- `assertInputMethod`, `checkFlags` and `setOption`
 data RunOpt = Compile
-          | Interpret
-          | Invert
+            | Interpret
+            | Invert
 
 data Options =
     Options {
@@ -72,7 +75,7 @@ assertInputMethod fname = do
 checkFlags :: [String] -> Either Error Options
 checkFlags = foldM setOption defaultOpts
 
--- | Sets fields in the `Option` record
+-- | Sets fields in the `Options` record
 setOption :: Options -> String -> Either Error Options
 setOption opts "-i" = return $ opts { runOpt = Invert }
 setOption opts "-c" = return $ opts { runOpt = Compile }
