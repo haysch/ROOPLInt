@@ -95,7 +95,7 @@ topReferenceScope :: Interpreter Ref
 topReferenceScope = gets referenceScope >>=
     \case
         (r:_) -> return r
-        [] -> throwError $ emptyScopeStackException "scope"
+        [] -> throwError $ emptyScopeStackException "reference"
 
 -- | Enters a new object scope using an object's environment as reference and sets caller to the calling object's environment, if any exists
 enterObjectScope :: Env -> Interpreter ()
