@@ -13,7 +13,7 @@ instance Show Trace where
     show (Trace s) = s
     show (TraceExpression s) = s
     show (TraceStatement stmt store) = 
-        printf "    In \"%s\"\n    where %s\n" stmt store
+        printf "  In \"%s\"\n  where %s" stmt store
 
 type Cause = Trace
 type TraceStack = [Trace]
@@ -23,7 +23,7 @@ instance Show RooplException where
     show (RooplException c t) = 
         let cause = "Exception thrown: " ++ show c
             traceStack = map show $ reverse t
-         in intercalate "\n" $ cause : traceStack
+         in printf "%s\n%s" cause (intercalate "\n\n" traceStack)
 
 addTrace :: Trace -> RooplException -> RooplException
 addTrace t (RooplException c s) = RooplException c $ t : s
