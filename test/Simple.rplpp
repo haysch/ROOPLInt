@@ -1,0 +1,19 @@
+class Program
+    int u
+
+    method main()
+        local Foo f = nil
+        local int x = 5
+        call f::set(x)
+        call f::get(u)
+        delocal int x = 5
+        delocal Foo f = nil
+
+class Foo
+    int z
+
+    method set(int y)
+        z ^= y
+
+    method get(int y)
+        y ^= z

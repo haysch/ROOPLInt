@@ -94,12 +94,15 @@ loadContent fname = do
     hGetContents handle
 
 -- | Writes output to file or stdout
-writeOutput :: String -> String -> String -> IO ()
-writeOutput "-" "" content = putStrLn content
-writeOutput defaultName "" content =
+writeOutput :: RunOpt -> String -> String -> String -> IO ()
+writeOutput _ "-" "" content = putStrLn content
+writeOutput Invert defaultName "" content =
     let fname = head (splitOn "." defaultName) ++ "-inverted.rplpp"
      in writeFile fname content
-writeOutput _ outfile content = writeFile outfile content
+writeOutput Compile defaultName "" content =
+    let fname = head (splitOn "." defaultName) ++ ".pal"
+     in writeFile fname content
+writeOutput _ _ outfile content = writeFile outfile content
 
 -- | Backend parsing and analysis
 parseAndAnalysis :: String -> Except Error (SProgram, SAState)
@@ -145,10 +148,10 @@ main =
             -- Invert
             Just (file, Options { runOpt = Invert, output = outfile }) ->
                 loadContent file >>= \input ->
-                    either (\err -> putStrLn err >> exitWith (ExitFailure 1)) (writeOutput file outfile) $ invertProgram input
+                    either (\err -> putStrLn err >> exitWith (ExitFailure 1)) (writeOutput Invert file outfile) $ invertProgram input
             -- Compile
             Just (file, Options { runOpt = Compile, output = outfile }) ->
                 loadContent file >>= \input ->
-                    either (\err -> putStrLn err >> exitWith (ExitFailure 1)) (writeOutput file outfile . showProgram) $ compileProgram input
+                    either (\err -> putStrLn err >> exitWith (ExitFailure 1)) (writeOutput Compile file outfile . showProgram) $ compileProgram input
             _ -> putStrLn usage
             

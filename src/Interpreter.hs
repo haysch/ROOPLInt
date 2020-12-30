@@ -917,7 +917,7 @@ showValueString vst (Object _ o) =
 showValueString vst (ObjectArray _ oa) = 
     mapM (lookupStore >=> \l' -> showValueString vst l') oa 
         >>= \oa' -> return $ toArrayString oa'
-showValueString _ Null = return "\"nil\""
+showValueString _ Null = return "nil"
 
 -- | Initializes an class object
 initializeObject :: TypeName -> [VariableDeclaration] -> Interpreter ()
