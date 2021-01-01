@@ -38,13 +38,6 @@ $(function(){
     }
   }
 
-  function getOptions() {
-    var options = {
-      intSize: $("#options input[name='options-int-size']:checked").val()
-    };
-    return options;
-  }
-
   var spinnerTimeout;
   function execute(options) {
     defaults = {
