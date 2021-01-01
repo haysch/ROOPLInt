@@ -167,12 +167,13 @@ addReference (n1, Just p1) (n2, Nothing) = do
     let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
      in case Map.lookup n1 unionEnvs of
         Just l -> lookupStore l >>= \e1 ->
-            let os' = case (e1, p1) of
-                        (IntegerArray ia, Constant p1') ->
-                            let il = ia !! fromIntegral p1'
+            evalExpression p1 >>= \p1' ->
+            let os' = case (e1, p1') of
+                        (IntegerArray ia, Const ip) ->
+                            let il = ia !! fromIntegral ip
                              in Map.insert n2 il os
-                        (ObjectArray _ oa, Constant p') ->
-                            let ol = oa !! fromIntegral p'
+                        (ObjectArray _ oa, Const op) ->
+                            let ol = oa !! fromIntegral op
                              in Map.insert n2 ol os
                 rs' = Map.insert n2 n1 rs -- TODO: Add offset?
              in modify $ \s -> s { objectScope = os' : drop 1 (objectScope s), referenceScope = rs' : drop 1 (referenceScope s) }
@@ -185,12 +186,13 @@ addReference (n1, Nothing) (n2, Just p2) = do
     let unionEnvs = Map.union os cl -- Unions current object and caller environment. Prefer current bindings
      in case Map.lookup n1 unionEnvs of
         Just l -> lookupVariableValue n2 >>= \e2 ->
-            case (e2, p2) of
-                (IntegerArray ia, Constant p2') ->
-                    let ia' = replaceNth p2' l ia
+            evalExpression p2 >>= \p2' ->
+            case (e2, p2') of
+                (IntegerArray ia, Const ip) ->
+                    let ia' = replaceNth ip l ia
                      in updateBinding n2 $ IntegerArray ia'
-                (ObjectArray tn oa, Constant p2') ->
-                    let oa' = replaceNth p2' l oa
+                (ObjectArray tn oa, Const op) ->
+                    let oa' = replaceNth op l oa
                      in updateBinding n2 $ ObjectArray tn oa'
             >> 
             let rs' = Map.insert n2 n1 rs -- TODO: Add offset?
@@ -206,14 +208,16 @@ addReference (n1, Just p1) (n2, Just p2) = do
         Just _ -> do
             e1 <- lookupVariableValue n1
             e2 <- lookupVariableValue n2
-            case (e1, p1, e2, p2) of
-                (IntegerArray ia1, Constant p1', IntegerArray ia2, Constant p2') ->
-                    let il1 = ia1 !! fromIntegral p1'
-                        ia2' = replaceNth p2' il1 ia2
+            p1' <- evalExpression p1
+            p2' <- evalExpression p2
+            case (e1, p1', e2, p2') of
+                (IntegerArray ia1, Const ip1, IntegerArray ia2, Const ip2) ->
+                    let il1 = ia1 !! fromIntegral ip1
+                        ia2' = replaceNth ip2 il1 ia2
                      in updateBinding n2 $ IntegerArray ia2'
-                (ObjectArray _ oa1, Constant p1', ObjectArray tn2 oa2, Constant p2') ->
-                    let ol1 = oa1 !! fromIntegral p1'
-                        oa2' = replaceNth p2' ol1 oa2
+                (ObjectArray _ oa1, Const op1, ObjectArray tn2 oa2, Const op2) ->
+                    let ol1 = oa1 !! fromIntegral op1
+                        oa2' = replaceNth op2 ol1 oa2
                      in updateBinding n2 $ ObjectArray tn2 oa2'
             >> 
             let rs' = Map.insert n2 n1 rs -- TODO: Add offset?
@@ -252,8 +256,11 @@ lookupVariableValue n = topObjectScope >>= \os ->
     case Map.lookup n os of
         Just loc -> lookupStore loc >>= \e' ->
             return e'
-        Nothing -> getIdentifierName n >>= \vn -> 
-            throwError $ undefinedVariableException vn
+        Nothing -> getCaller >>= \cl ->
+            case Map.lookup n cl of
+                Just loc -> lookupStore loc >>= \e' -> return e'
+                Nothing -> getIdentifierName n >>= \vn -> 
+                    throwError $ undefinedVariableException vn
 
 -- | Checks whether an array index is out of bounds
 checkOutOfBounds :: SIdentifier -> [a] -> Integer -> Interpreter ()

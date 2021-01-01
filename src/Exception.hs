@@ -10,8 +10,9 @@ data Trace = Trace String
            | TraceStatement String String
 
 instance Show Trace where
-    show (Trace s) = s
-    show (TraceExpression s) = s
+    show (Trace t) = t
+    show (TraceExpression e) = 
+        printf "  In \"%s\"" e
     show (TraceStatement stmt store) = 
         printf "  In \"%s\"\n  where %s" stmt store
 
