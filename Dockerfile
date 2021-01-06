@@ -1,9 +1,9 @@
 FROM haskell:8.8.4-buster as stack-build
 WORKDIR /app
-ENV EXE_NAME=ROOPLInt
+ENV EXE_NAME=ROOPLPP
 
 COPY src/ src/
-COPY Setup.hs stack.yaml stack.yaml.lock ROOPLInt.cabal README.md LICENSE ./
+COPY Setup.hs stack.yaml stack.yaml.lock ROOPLPP.cabal README.md LICENSE ./
 
 RUN stack build --verbosity error \
  && cp "$(stack path --local-install-root)/bin/$EXE_NAME" $EXE_NAME

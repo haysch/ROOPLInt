@@ -1,10 +1,10 @@
-name:                 ROOPLInt
+name:                 ROOPLPP
 version:              0.1.0.0
-synopsis:             ROOPL++ Interpreter
+synopsis:             ROOPL++ suite. Supports compilation, interpretation and program inversion
 -- description:
 license:              MIT
 license-file:         LICENSE
-homepage:             https://github.com/haysch/ROOPLInt
+homepage:             https://github.com/haysch/ROOPLPP
 author:               Lasse Hay-Schmidt (interpreter/inverter) & Martin Holm Cservenka (backend)
 maintainer:           lasse.hay.schmidt@gmail.com
 category:             Language
@@ -13,8 +13,8 @@ build-type:           Simple
 extra-source-files:   README.md
 cabal-version:        >=1.10
 
-executable ROOPLInt
-  main-is:              ROOPLInt.hs
+executable ROOPLPP
+  main-is:              ROOPLPP.hs
   other-modules:        AST
                       , ClassAnalyzer
                       , CodeGenerator

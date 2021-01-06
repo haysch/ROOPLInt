@@ -1,23 +1,23 @@
 <?php
 
 $prog_text = filter_input(INPUT_POST, "code", FILTER_UNSAFE_RAW);
-$rooplint_flags = array("-t30");
+$rooplpp_flags = array("-t30");
 
 $invert = filter_input(INPUT_POST, "invert", FILTER_VALIDATE_BOOLEAN);
 $compile = filter_input(INPUT_POST, "compile", FILTER_VALIDATE_BOOLEAN);
 
 if ($invert === TRUE) {
-  array_push($rooplint_flags, "-i");
+  array_push($rooplpp_flags, "-i");
 }
 if ($compile === TRUE) {
-  array_push($rooplint_flags, "-c");
+  array_push($rooplpp_flags, "-c");
 }
 
 # Read program from stdin
-array_push($rooplint_flags, "-");
+array_push($rooplpp_flags, "-");
 
 $dir = dirname(__FILE__);
-$cmd = "$dir/ROOPLInt " . implode(" ", $rooplint_flags);
+$cmd = "$dir/ROOPLPP " . implode(" ", $rooplpp_flags);
 
 $cwd = "/tmp";
 $descriptorspec = array(

@@ -1,14 +1,17 @@
-# ROOPLInt
+# ROOPLPP
 
-*ROOPLInt* is an interpreter for running source code written in **Reversible Object Oriented Programming Language++** (ROOPL++).
+*ROOPLPP* is an extension of the **Reversible Object Oriented Programming Language++** (ROOPL++) by Martin Cservenka's [ROOPLPPC repository](https://github.com/cservenka/ROOPLPPC).
 
-The backbone, everything from parsing to type checking, is forked from Martin Cservenka's [ROOPLPPC repository](https://github.com/cservenka/ROOPLPPC), as the scope of this project is to be able to run ROOPL(++) code without compiling to PISA.
+*ROOPLPP* supports compilation, interpretation and program inversion of ROOPL++ source code.
 
-For ease of use when building/testing, see the `Makefile`.
+The interpreter and program inverter is created as part of a university project.
+The goal was to improve the usability of ROOPL.
+
+For ease of use when building/testing, see the included `Makefile`.
 
 ## Requirements
 
-ROOPLInt uses [Stack](https://docs.haskellstack.org/en/stable/README/) to manage all dependencies and requirements.
+ROOPLPP uses [Stack](https://docs.haskellstack.org/en/stable/README/) to manage all dependencies and requirements.
 
 ## Building
 
@@ -23,7 +26,7 @@ which compiles an executable into the `.stack-work` folder
 **TODO**
 To run the ROOPL interpreter, do the following
 ```
-stack exec ROOPLInt input.rplpp
+stack exec ROOPLPP input.rplpp
 ```
 which interprets the input program and execute it directly.
 
@@ -39,4 +42,4 @@ The web interface, in `web/`, is based on the web interface for the Janus interp
 The web interface contains a different license, which can be found in the `web/` folder.
 
 To ease of setting up and ensuring reproducability of the web service, this solution contains a `Dockerfile`.
-The `Dockerfile` builds the `ROOPLInt` project and then copies the executable to the web interface, along with the test examples.
+The `Dockerfile` builds the `ROOPLPP` project and then copies the executable to the web interface, along with the test examples.
