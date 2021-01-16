@@ -1,0 +1,72 @@
+class Node
+    int value
+    Node left
+    Node right
+
+    method setValue(int newValue)
+        value ^= newValue 
+
+    method insertNode(Node node, int nodeValue)
+        if nodeValue < value then
+            if left = nil & node != nil then
+                left <=> node
+            else skip
+            fi left != nil & node = nil
+
+            if left != nil then
+                call left::insertNode(node, nodeValue)
+            else skip
+            fi left != nil
+        else
+            if right = nil & node != nil then
+                right <=> node
+            else skip
+            fi right != nil & node = nil
+
+            if right != nil then
+                call right::insertNode(node, nodeValue)
+            else skip
+            fi right != nil
+        fi nodeValue < value
+
+class Tree
+    Node root
+    
+    method insertNode(Node node, int value)
+        if root = nil & node != nil then
+            root <=> node
+        else skip
+        fi root != nil & node = nil
+
+        if root != nil then
+            call root::insertNode(node, value)
+        else skip
+        fi root != nil
+
+class Program
+    Tree tree
+    int nodeCount
+    int[] nodeVals
+
+    method main()
+        new Tree tree 
+        nodeCount += 4
+        new int[nodeCount] nodeVals
+
+        nodeVals[0] += 3
+        nodeVals[1] += 2
+        nodeVals[2] += 4
+        nodeVals[3] += 1
+        
+        local int x = 0
+        from x = 0 do
+            skip
+        loop
+            local Node node = nil
+            new Node node
+            call node::setValue(nodeVals[x])
+            call tree::insertNode(node, nodeVals[x])
+            delocal Node node = nil
+            x += 1
+        until x = nodeCount
+        delocal int x = nodeCount
