@@ -9,7 +9,7 @@ RUN stack build --verbosity error \
  && cp "$(stack path --local-install-root)/bin/$EXE_NAME" $EXE_NAME
 
 FROM php:8.0.0-apache-buster as web
-ENV WWW_PATH=/var/www/html/topps/roopl-playground/
+ENV WWW_PATH=/var/www/html/
 
 COPY web/ $WWW_PATH
 COPY --from=stack-build /app/$EXE_NAME $WWW_PATH
