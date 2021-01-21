@@ -15,6 +15,7 @@ docker-run: docker-build
 rplpp-test: build
 	stack exec ROOPLPP test/ArrayUsageExample.rplpp
 	stack exec ROOPLPP test/BinaryTree.rplpp
+	stack exec ROOPLPP test/BinaryTreeArrayUsage.rplpp
 	stack exec ROOPLPP test/LinkedList.rplpp
 	stack exec ROOPLPP test/DoublyLinkedList.rplpp
 	stack exec ROOPLPP test/Fibonacci.rplpp
