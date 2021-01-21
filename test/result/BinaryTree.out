@@ -1,0 +1,1 @@
+{ "sumResult": 3, "tree": { "root": { "left": { "left": { "left": nil, "right": nil, "value": 2 }, "right": nil, "value": 1 }, "right": nil, "value": 0 } }, "nodeCount": 3 }

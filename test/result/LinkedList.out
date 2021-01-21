@@ -1,0 +1,1 @@
+{ "linkedList": { "head": { "next": { "next": { "next": { "next": { "next": { "next": { "next": { "next": { "next": { "next": { "next": nil, "data": 9 }, "data": 8 }, "data": 7 }, "data": 6 }, "data": 5 }, "data": 4 }, "data": 3 }, "data": 2 }, "data": 1 }, "data": 0 }, "data": 0 }, "listLength": 10 }, "sumResult": 0, "listLength": 10 }
