@@ -26,6 +26,11 @@ newlines n a = intercalate "\n" $ map (tab n ++) a
 newlines2 :: Int -> [String] -> String
 newlines2 n a = intercalate "\n\n" $ map (tab n ++) a
 
+ivModOp :: ModOp -> ProgramInverter ModOp
+ivModOp ModAdd = return ModSub
+ivModOp ModSub = return ModAdd
+ivModOp ModXor = return ModXor
+
 ivExpression :: Expression -> ProgramInverter String
 ivExpression (Constant n) = return $ show n
 ivExpression (Variable v) = return v
@@ -46,8 +51,8 @@ ivVariable (n, Just e)  = ivExpression $ ArrayElement (n, e)
 ivStatement :: Statement -> ProgramInverter String
 ivStatement (Assign n modop e) = do
     e' <- ivExpression e
-    let modop' = stringifyModOp modop
-     in return $ unwords [n, modop', e']
+    modop' <- stringifyModOp <$> ivModOp modop
+    return $ unwords [n, modop', e']
 ivStatement (AssignArrElem e1 modop e2) = do
     e1' <- ivExpression $ ArrayElement e1
     e2' <- ivExpression e2
