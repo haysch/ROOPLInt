@@ -3,7 +3,6 @@ module Stringify where
 import AST
 import Text.Printf (printf)
 import Data.List (intercalate)
-import Debug.Trace
 
 lookupId :: SIdentifier -> SymbolTable -> String
 lookupId n st =
