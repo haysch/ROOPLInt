@@ -3,6 +3,7 @@ module Stringify where
 import AST
 import Text.Printf (printf)
 import Data.List (intercalate)
+import Debug.Trace
 
 lookupId :: SIdentifier -> SymbolTable -> String
 lookupId n st =
@@ -102,10 +103,12 @@ stringifySStatement (LocalBlock dt n e1 _ e2) st =
      in unwords [e1', statementShorthand, e2']
 stringifySStatement (LocalCall m args) st =
     let args' = intercalate ", " $ map (`stringifyVariable` st) args
-     in printf "call %s(%s)" m args'
+        m' = stringifyVariable (m, Nothing) st
+     in printf "call %s(%s)" m' args'
 stringifySStatement (LocalUncall m args) st =
     let args' = intercalate ", " $ map (`stringifyVariable` st) args
-     in printf "uncall %s(%s)" m args'
+        m' = stringifyVariable (m, Nothing) st
+     in printf "uncall %s(%s)" m' args'
 stringifySStatement (ObjectCall o m args) st =
     let o' = stringifyVariable o st
         args' = intercalate ", " $ map (`stringifyVariable` st) args
