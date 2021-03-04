@@ -42,7 +42,7 @@ binaryOperationException binop ie1 ie2 =
 
 modOperationException :: ModOp -> Identifier -> IExpression -> RooplException
 modOperationException modop vn ie =
-    errorCause . Trace $ printf "Mod operation '%s %s %s' not legal" vn vn (stringifyModOp modop) (stringifyIExpression ie)
+    errorCause . Trace $ printf "Mod operation '%s %s %s' not legal" vn (stringifyModOp modop) (stringifyIExpression ie)
 
 undefinedVariableException :: Identifier -> RooplException
 undefinedVariableException = errorCause . Trace . printf "Variable '%s' has not been defined"

@@ -55,8 +55,8 @@ traceExpression e m = catchError m $ \err -> do
 -- | Traces a statement execution and catches any errors to provide a trace
 traceStatement :: SStatement -> Interpreter a -> Interpreter a
 traceStatement stmt m = catchError m $ \err -> do
-    mos <- mainObjectScope
-    ss <- serializeStore mos
+    tos <- topObjectScope
+    ss <- serializeStore tos
     st <- gets (symbolTable . saState)
     let stmt' = stringifySStatement stmt st
      in throwError $ addTrace (TraceStatement stmt' ss) err
@@ -414,8 +414,8 @@ evalAssignArrElem (n, e1) modop e2 = do
                      \case 
                         Const v1 -> updateStore vl $ Const (evalModOp modop v1 v2)
                         ie -> throwError $ typeMatchException ["int"] (getExpressionDataType ie)
-        (ie, _, _) -> getIdentifierName n >>= \vn ->
-            throwError $ modOperationException modop vn ie
+        (ie1, _, ie2) -> getIdentifierName n >>= \vn ->
+            throwError $ modOperationException modop (stringifyIExpression ie1) ie2
     where evalModOp ModAdd = (+)
           evalModOp ModSub = (-)
           evalModOp ModXor = xor
