@@ -26,7 +26,7 @@ which compiles an executable into the `.stack-work` folder
 **TODO**
 To run the ROOPL interpreter, do the following
 ```
-stack exec ROOPLPP input.rplpp
+stack exec roopl input.rplpp
 ```
 which interprets the input program and execute it directly.
 
