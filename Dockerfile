@@ -1,6 +1,6 @@
 FROM haskell:8.8.4-buster as stack-build
 WORKDIR /app
-ENV EXE_NAME=ROOPLPP
+ENV EXE_NAME=rooplpp
 
 COPY src/ src/
 COPY Setup.hs stack.yaml stack.yaml.lock ROOPLPP.cabal README.md LICENSE ./

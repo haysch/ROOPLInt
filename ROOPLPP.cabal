@@ -13,7 +13,7 @@ build-type:           Simple
 extra-source-files:   README.md
 cabal-version:        >=1.10
 
-executable ROOPLPP
+executable rooplpp
   main-is:              ROOPLPP.hs
   other-modules:        AST
                       , ClassAnalyzer

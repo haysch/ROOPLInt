@@ -13,13 +13,13 @@ docker-run: docker-build
 	docker run -p 8080:80 -it --rm --name rooplpp-interface rooplpp:latest
 
 rplpp-test: build
-	stack exec ROOPLPP test/ArrayUsageExample.rplpp
-	stack exec ROOPLPP test/BinaryTree.rplpp
-	stack exec ROOPLPP test/BinaryTreeArrayUsage.rplpp
-	stack exec ROOPLPP test/LinkedList.rplpp
-	stack exec ROOPLPP test/DoublyLinkedList.rplpp
-	stack exec ROOPLPP test/Fibonacci.rplpp
-	stack exec ROOPLPP test/SimpleArithmetic.rplpp
-	stack exec ROOPLPP test/SimpleConditional.rplpp
-	stack exec ROOPLPP test/SimpleLoop.rplpp
-	stack exec ROOPLPP test/SimpleMethodCall.rplpp
+	stack exec rooplpp test/ArrayUsageExample.rplpp
+	stack exec rooplpp test/BinaryTree.rplpp
+	stack exec rooplpp test/BinaryTreeArrayUsage.rplpp
+	stack exec rooplpp test/LinkedList.rplpp
+	stack exec rooplpp test/DoublyLinkedList.rplpp
+	stack exec rooplpp test/Fibonacci.rplpp
+	stack exec rooplpp test/SimpleArithmetic.rplpp
+	stack exec rooplpp test/SimpleConditional.rplpp
+	stack exec rooplpp test/SimpleLoop.rplpp
+	stack exec rooplpp test/SimpleMethodCall.rplpp

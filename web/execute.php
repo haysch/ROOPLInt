@@ -17,7 +17,7 @@ if ($compile === TRUE) {
 array_push($rooplpp_flags, "-");
 
 $dir = dirname(__FILE__);
-$cmd = "$dir/ROOPLPP " . implode(" ", $rooplpp_flags);
+$cmd = "$dir/rooplpp " . implode(" ", $rooplpp_flags);
 
 $cwd = "/tmp";
 $descriptorspec = array(

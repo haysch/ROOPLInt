@@ -46,7 +46,7 @@ defaultOpts =
 
 -- | Common usage string
 usage :: String
-usage = "usage: ROOPLPP [-i | -c | -tN] <input>.rplpp [-o<output>]\n\
+usage = "usage: rooplpp [-i | -c | -tN] <input>.rplpp [-o<output>]\n\
         \options:\n\
         \ -i:           invert program\n\
         \ -c:           compile program\n\
