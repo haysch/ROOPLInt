@@ -1,4 +1,4 @@
-module Exception where
+module Error where
 
 import Data.List (intercalate)
 import Text.Printf (printf)
@@ -18,13 +18,13 @@ instance Show Trace where
 
 type Cause = Trace
 type TraceStack = [Trace]
-data RooplException = RooplException Cause TraceStack
+data RooplError = RooplError Cause TraceStack
 
-instance Show RooplException where
-    show (RooplException c t) = 
-        let cause = "Exception thrown: " ++ show c
+instance Show RooplError where
+    show (RooplError c t) = 
+        let cause = "Error thrown: " ++ show c
             traceStack = map show $ reverse t
          in printf "%s\n%s" cause (intercalate "\n\n" traceStack)
 
-addTrace :: Trace -> RooplException -> RooplException
-addTrace t (RooplException c s) = RooplException c $ t : s
+addTrace :: Trace -> RooplError -> RooplError
+addTrace t (RooplError c s) = RooplError c $ t : s

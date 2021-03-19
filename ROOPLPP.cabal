@@ -19,8 +19,8 @@ executable rooplpp
                       , ClassAnalyzer
                       , CodeGenerator
                       , Interpreter
-                      , Exception
-                      , ExceptionMessages
+                      , Error
+                      , ErrorMessages
                       , MacroExpander
                       , PISA
                       , Parser
