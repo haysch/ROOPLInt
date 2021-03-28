@@ -28,4 +28,4 @@ class Program
             call fib()
             x1 += x2
             x1 <=> x2
-        fi x1 = x
+        fi x1 = x2
