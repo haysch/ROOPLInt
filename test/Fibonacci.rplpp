@@ -1,10 +1,10 @@
 class Program
     // Paired Fibonacci
+    // Computes the n+1-th and n+2-th Fibonacci numbers
 
-    // Robert Glueck and Masahiko Kawabe,
-    // A Program Inverter for a Functional Language with Equality and Constructors, 2003.
-    // p.260
-    // Available at http://www.springerlink.com/content/d6y3578p6l8waqng/
+    // Tetsuo Yokoyama and Robert Glück,
+    // A reversible programming language and its invertible self-interpreter, 2007.
+    // https://dl.acm.org/doi/10.1145/1244381.1244404
 
     int n
     int x1
