@@ -1,0 +1,59 @@
+class Cell
+    int data
+    Cell next
+
+    method addToData(int value)
+        data += value
+
+    method addFromData(int value)
+        value += data
+
+    method swapNext(Cell cell)
+        next <=> cell
+
+//////////////////////////////////////////
+// Summation of a list of natural numbers
+// R.Glueck, 210330
+//////////////////////////////////////////
+class Program
+    Cell right
+    Cell left
+    int sum
+
+    method main()
+        //////////////////////////////////////// 
+        // begin: Create list right -> [1, ..., n]
+        local int n = 5  // n >= 0
+        from n != 0 do skip
+        loop
+            local Cell cell = nil
+            new Cell cell
+            call cell::swapNext(right)
+            call cell::addToData(n)
+            right <=> cell
+            n -= 1
+            delocal Cell cell = nil
+        until n = 0
+        delocal int n = 0
+        // end: Create list right -> [1, ..., n]
+        ////////////////////////////////////////
+
+        ////////////////////////////////////////
+        // begin: Summation of list values
+        // left -> nil, right -> [1,...,n], sum = 0
+        from left = nil do skip           // walk forward through list
+        loop
+            call right::addFromData(sum)  // payload operation: summation
+            call right::swapNext(left)    // swap pointers: cell points left
+            left <=> right                // left->[i,..,1], right->[i+1,...,n]
+        until right = nil
+        // left->[n,..,1], right->nil, sum = 1 + ... + n
+        from right = nil do skip          // walk backward through list
+        loop
+            left <=> right
+            call right::swapNext(left)    // swap pointers: cell points right
+            skip                          // payload operation: none
+        until left = nil
+        // left->nil, right->[1,...,n], sum = 1 + ... + n
+        // end:  Summation of list values
+        ////////////////////////////////////////

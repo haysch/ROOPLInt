@@ -1,0 +1,1 @@
+{ "foo": { "value": 5 }, "bar": { "value": 5, "value2": 10 }, "fooList": [{ "value": 0 }, { "value": 0 }, { "value": 0, "value2": 0 }, null, null], "barList": [null, null, null, null, null], "intList": [10, 10, 5, 0, 0], "singleton": null, "length": 3735943886 }

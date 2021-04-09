@@ -1,0 +1,1 @@
+{ "tree": { "root": { "value": 3, "left": { "value": 2, "left": { "value": 1, "left": null, "right": null }, "right": null }, "right": { "value": 4, "left": null, "right": null } } }, "nodeCount": 4, "nodeVals": [3, 2, 4, 1] }

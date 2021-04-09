@@ -1,0 +1,61 @@
+class Foo
+    int y
+    
+    method set(int x)
+        y ^= x
+
+    method swap(int x)
+        x <=> y
+
+class Program
+    int min
+    int max
+    int[] xs
+
+    method main()
+        local int length = 4
+        local int m = 0
+        new int[length] xs
+        
+        xs[0] += 4
+        xs[1] += 2
+        xs[2] += 8
+        xs[3] += 6
+        
+        call findMin(m, length)
+        min ^= m
+        uncall findMin(m, length)
+        
+        call findMax(m, length)
+        max ^= m
+        uncall findMax(m, length)
+        
+        delocal int m = 0
+        delocal int length = 4
+        
+    method findMin(int m, int n)
+        m ^= xs[0]
+        local int i = 1
+        from i = 1 do
+            if xs[i] < m then
+                xs[i] -= m
+                m += xs[i]
+            else skip
+            fi xs[i] < 0
+            i += 1
+        loop skip
+        until i = n
+        delocal int i = n
+        
+    method findMax(int m, int n)
+        local int i = 0
+        from i = 0 do
+            if xs[i] > m then
+                m -= xs[i]
+                m <=> xs[i]
+            else skip
+            fi xs[i] < 0
+            i += 1
+        loop skip
+        until i = n
+        delocal int i = n
