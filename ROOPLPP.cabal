@@ -5,7 +5,7 @@ synopsis:             ROOPL++ suite. Supports compilation, interpretation and pr
 license:              MIT
 license-file:         LICENSE
 homepage:             https://github.com/haysch/ROOPLPP
-author:               Lasse Hay-Schmidt (interpreter/inverter) & Martin Holm Cservenka (backend)
+author:               Lasse Hay-Schmidt (interpreter/inverter) & Martin Holm Cservenka (frontend)
 maintainer:           lasse.hay.schmidt@gmail.com
 category:             Language
 -- copyright:
