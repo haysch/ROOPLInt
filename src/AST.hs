@@ -143,8 +143,8 @@ type Store = Map Location IExpression
 
 type ObjectScope = [Env]
 
-type Ref = Map SIdentifier SIdentifier
-type ReferenceScope = [Ref]
+type References = Map (SIdentifier, Maybe SIdentifier) (SIdentifier, Maybe SIdentifier)
+type ReferenceScope = [References]
 
 data IExpression = Const Integer
                  | Object TypeName Env
