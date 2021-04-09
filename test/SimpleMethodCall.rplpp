@@ -8,12 +8,14 @@ class Foo
 
 class Program
     int z
-    Foo f
     
     method main()
+        local Foo f = nil
         new Foo f
         local int x = 0
         call f::addTwo(x)
         z += x
         uncall f::addTwo(x)
         delocal int x = 0
+        delete Foo f
+        delocal Foo f = nil

@@ -17,8 +17,10 @@ rplpp-test: build
 	stack exec rooplpp test/BinaryTree.rplpp
 	stack exec rooplpp test/BinaryTreeArrayUsage.rplpp
 	stack exec rooplpp test/LinkedList.rplpp
+	stack exec rooplpp test/LinkedListReversal.rplpp
 	stack exec rooplpp test/DoublyLinkedList.rplpp
 	stack exec rooplpp test/Fibonacci.rplpp
+	stack exec rooplpp test/FindMinMax.rplpp
 	stack exec rooplpp test/SimpleArithmetic.rplpp
 	stack exec rooplpp test/SimpleConditional.rplpp
 	stack exec rooplpp test/SimpleLoop.rplpp

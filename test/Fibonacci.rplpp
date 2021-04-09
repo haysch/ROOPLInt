@@ -6,26 +6,34 @@ class Program
     // A reversible programming language and its invertible self-interpreter, 2007.
     // https://dl.acm.org/doi/10.1145/1244381.1244404
 
-    int n
-    int x1
-    int x2
+    int outx1
+    int outx2
 
     method main()
-        n += 4
-        call fib()
+        local int n = 4
+        local int x1 = 0
+        local int x2 = 0
+        call fib(n, x1, x2)
+        outx1 ^= x1
+        outx2 ^= x2
+        uncall fib(n, x1, x2)
+        delocal int x2 = 0
+        delocal int x1 = 0
+        delocal int n = 4
+
 
     // method main_bwd()
     //     x1 += 5
     //     x2 += 8
     //     uncall fib()
 
-    method fib()
+    method fib(int n, int x1, int x2)
         if n = 0 then
             x1 += 1
             x2 += 1
         else
             n -= 1
-            call fib()
+            call fib(n, x1, x2)
             x1 += x2
             x1 <=> x2
         fi x1 = x2
