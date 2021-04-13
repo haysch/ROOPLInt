@@ -1,12 +1,3 @@
-class Foo
-    int y
-    
-    method set(int x)
-        y ^= x
-
-    method swap(int x)
-        x <=> y
-
 class Program
     int min
     int max
