@@ -70,8 +70,8 @@ checkArgument (ObjectType ca, ObjectArrayType cp) = asks (superClasses . caState
 checkArgument (ObjectArrayType ca, ObjectType cp) = asks (superClasses . caState) >>= \sc ->
     unless (ca == cp || maybe False (elem cp) (lookup ca sc)) (throwError $ "Class " ++ ca ++ " not a subtype of class " ++ cp)
 checkArgument (IntegerArrayType, IntegerArrayType) = return ()
-checkArgument (IntegerArrayType, tp) = expectType IntegerArrayType tp
-checkArgument (ta, IntegerArrayType) = expectType IntegerArrayType ta       
+checkArgument (IntegerArrayType, tp) = expectType (getArrayType IntegerArrayType) tp
+checkArgument (ta, IntegerArrayType) = expectType (getArrayType IntegerArrayType) ta
 checkArgument (ta, tp) = expectType tp ta
 
 tcExpression :: SExpression -> TypeChecker DataType
