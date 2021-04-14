@@ -330,7 +330,7 @@ classDeclaration =
     <*> many1 methodDeclaration
 
 program :: Parser Program
-program = spaces >> GProg <$> many1 classDeclaration <* eof
+program = Token.whiteSpace tokenParser >> GProg <$> many1 classDeclaration <* eof
 
 parseString :: String -> Except String Program
 parseString s = ExceptT (Identity $ first show $ parse program "" s)
