@@ -56,10 +56,12 @@ traceExpression e m = catchError m $ \err -> do
 traceStatement :: SStatement -> Interpreter a -> Interpreter a
 traceStatement stmt m = catchError m $ \err -> do
     tos <- topObjectScope
-    ss <- serializeStore tos
+    trs <- topReferenceScope
+    ers <- createEnvironmentFromReferences trs
+    sos <- serializeObjectStore (Map.union tos ers)
     st <- gets (symbolTable . saState)
     let stmt' = stringifySStatement stmt st
-     in throwError $ addTrace (TraceStatement stmt' ss) err
+     in throwError $ addTrace (TraceStatement stmt' sos) err
 
 -- | Replaces the n'th entry in a list
 replaceNth :: Integer -> a -> [a] -> [a]
@@ -543,12 +545,14 @@ updateLocation :: (SIdentifier, Maybe Integer) -> Location -> Interpreter ()
 updateLocation n l = do
     os <- gets objectScope
     rs <- gets referenceScope
-    let os' = updateObjectScopeLoc n l os rs
-     in modify $ \s -> s { objectScope = os' }
+    os' <- updateObjectScopeLoc n l os rs
+    modify $ \s -> s { objectScope = os' }
 
-    where updateObjectScopeLoc :: (SIdentifier, Maybe Integer) -> Location -> ObjectScope -> ReferenceScope -> ObjectScope
-          updateObjectScopeLoc _ _ [] _ = []
-          updateObjectScopeLoc el@(n, e) l (o:os) (r:rs) = 
+    where updateObjectScopeLoc :: (SIdentifier, Maybe Integer) -> Location -> ObjectScope -> ReferenceScope -> Interpreter ObjectScope
+          updateObjectScopeLoc (n, _) _ [] _ = 
+              getIdentifierName n >>= \vn -> 
+                throwError $ undefinedVariableError vn
+          updateObjectScopeLoc el@(n, Nothing) l (o:os) (r:rs) = 
             case Map.lookup el r of
                 Just n' -> 
                     let r' = Map.delete el r
@@ -556,8 +560,24 @@ updateLocation n l = do
                 Nothing ->
                     case Map.lookup n o of
                         Just _ -> let o' = Map.adjust (const l) n o
-                                   in o' : os
-                        Nothing -> o : updateObjectScopeLoc el l os rs
+                                   in return $ o' : os
+                        Nothing -> updateObjectScopeLoc el l os rs >>= \os' -> return $ o : os' 
+          updateObjectScopeLoc el@(n, Just p) l (o:os) (r:rs) =
+            case Map.lookup el r of
+                Just n' -> 
+                    let r' = Map.delete el r
+                        in updateObjectScopeLoc n' l (o:os) (r':rs)
+                Nothing -> 
+                    case Map.lookup n o of
+                        Just ol -> lookupStore ol >>=
+                            updateArrayLoc l p >>= \arr ->
+                                updateStore arr ol >> return (o : os)
+                        Nothing -> updateObjectScopeLoc el l os rs >>= \os' -> return $ o : os'
+
+          updateArrayLoc :: Location -> Offset -> IExpression -> Interpreter IExpression
+          updateArrayLoc l p (IntegerArray ia)   = return . IntegerArray $ replaceNth p l ia
+          updateArrayLoc l p (ObjectArray tn oa) = return . ObjectArray tn $ replaceNth p l oa
+          updateArrayLoc _ _ ie                  = throwError $ typeMatchError ["int[]", "object[]"] (getExpressionDataType ie)
 
 -- | Evaluates a conditional statement with entry and exit assertion
 evalConditional :: SExpression -> [SStatement] -> [SStatement] -> SExpression -> Interpreter ()
@@ -941,10 +961,17 @@ initializeObject tn fs = do
           getFieldId (_:st) tns f = getFieldId st tns f
 
 -- | Serializes an environment to JSON-like syntax
-serializeStore :: Env -> Interpreter String
-serializeStore env = do
-    store <- showEnvironmentStore [] env
-    return $ toObjectString $ intercalate ", " store
+serializeObjectStore :: Env -> Interpreter String
+serializeObjectStore env = do
+    envst <- showEnvironmentStore [] env
+    return $ toObjectString $ intercalate ", " envst
+
+createEnvironmentFromReferences :: References -> Interpreter Env
+createEnvironmentFromReferences ref = 
+    Map.fromList <$>
+        mapM (\((n, _), rf) -> 
+            getReferenceLocation rf >>= \rl -> return (n, rl)
+        ) (Map.toList ref)
 
 -- | Evaluation of a program's main method
 evalProgram :: Interpreter String
@@ -957,7 +984,7 @@ evalProgram = do
     initializeObject mc fs
     evalMainMethod mm p
     env <- leaveObjectScope
-    serializeStore env
+    serializeObjectStore env
 
 -- | Wraps a string in curly brackets
 toObjectString :: String -> String
