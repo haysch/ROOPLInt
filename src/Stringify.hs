@@ -22,7 +22,7 @@ stringifyDataType IntegerType = "int"
 stringifyDataType (ObjectType tn) = tn
 stringifyDataType (ObjectArrayType tn) = tn ++ "[]"
 stringifyDataType IntegerArrayType = "int[]"
-stringifyDataType NilType = "null"
+stringifyDataType NilType = "nil"
 stringifyDataType dt = error $ "Unsupported datatype: " ++ show dt
 
 stringifyBinOp :: BinOp -> String
@@ -55,7 +55,7 @@ stringifySExpression (ArrayElement (n, e)) st =
     let n' = lookupId n st
         e' = stringifySExpression e st
      in printf "%s[%s]" n' e'
-stringifySExpression Nil _ = "null"
+stringifySExpression Nil _ = "nil"
 stringifySExpression (Binary binop e1 e2) st =
     let binop' = stringifyBinOp binop
         e1' = stringifySExpression e1 st
@@ -147,4 +147,4 @@ stringifyIExpression (Const _) = "int"
 stringifyIExpression (IntegerArray _) = "int[]"
 stringifyIExpression (Object tn _) = tn
 stringifyIExpression (ObjectArray tn _) = printf "%s[]" tn
-stringifyIExpression Null = "null"
+stringifyIExpression Null = "nil"

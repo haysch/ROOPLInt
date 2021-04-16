@@ -58,7 +58,7 @@ traceStatement stmt m = catchError m $ \err -> do
     tos <- topObjectScope
     trs <- topReferenceScope
     ers <- createEnvironmentFromReferences trs
-    sos <- serializeObjectStore (Map.union tos ers)
+    sos <- serializeObjectStore (Map.union ers tos)
     st <- gets (symbolTable . saState)
     let stmt' = stringifySStatement stmt st
      in throwError $ addTrace (TraceStatement stmt' sos) err
@@ -657,9 +657,15 @@ evalObjectCall (n, Nothing) m args = lookupVariableValue n >>=
         Object tn oenv -> do
             enterObjectScope oenv
             (_, ps, stmt) <- getObjectMethod tn m
-            evalCall args ps stmt
+            vn <- getIdentifierName n
+            evalCall args ps (trace ("calling " ++ vn ++ "::" ++ m) stmt)
             oenv' <- leaveObjectScope
-            addObjectBinding n $ Object tn oenv'
+            oest <- showEnvironmentStore [] oenv'
+            updateBinding n $ Object tn (trace (printAST oest) oenv')
+            tos <- topObjectScope
+            tos' <- showEnvironmentStore [] tos
+            _ <- trace (printAST tos') topObjectScope
+            return ()
         Null -> throwError callUninitializedObjectError 
         ie -> throwError $ typeMatchError ["object"] (getExpressionDataType ie)
 evalObjectCall (n, Just e) m args = do
@@ -691,7 +697,7 @@ evalObjectUncall (n, Nothing) m args = lookupVariableValue n >>=
             stmt' <- invertStatements i stmt
             evalCall args ps stmt'
             oenv' <- leaveObjectScope
-            addObjectBinding n $ Object tn oenv'
+            updateBinding n $ Object tn oenv'
         Null -> 
             getIdentifierName n >>= \vn ->
                 throwError uncallUninitializedObjectError
@@ -938,7 +944,7 @@ showValueString vst (Object _ o) =
 showValueString vst (ObjectArray _ oa) = 
     mapM (lookupStore >=> \l' -> showValueString vst l') oa 
         >>= \oa' -> return $ toArrayString oa'
-showValueString _ Null = return "null"
+showValueString _ Null = return "nil"
 
 -- | Initializes an class object
 initializeObject :: TypeName -> [VariableDeclaration] -> Interpreter ()
