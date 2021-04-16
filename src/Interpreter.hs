@@ -657,15 +657,9 @@ evalObjectCall (n, Nothing) m args = lookupVariableValue n >>=
         Object tn oenv -> do
             enterObjectScope oenv
             (_, ps, stmt) <- getObjectMethod tn m
-            vn <- getIdentifierName n
-            evalCall args ps (trace ("calling " ++ vn ++ "::" ++ m) stmt)
+            evalCall args ps stmt
             oenv' <- leaveObjectScope
-            oest <- showEnvironmentStore [] oenv'
-            updateBinding n $ Object tn (trace (printAST oest) oenv')
-            tos <- topObjectScope
-            tos' <- showEnvironmentStore [] tos
-            _ <- trace (printAST tos') topObjectScope
-            return ()
+            updateBinding n $ Object tn oenv'
         Null -> throwError callUninitializedObjectError 
         ie -> throwError $ typeMatchError ["object"] (getExpressionDataType ie)
 evalObjectCall (n, Just e) m args = do
