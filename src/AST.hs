@@ -139,7 +139,11 @@ type SProgram = [(TypeName, GMDecl SIdentifier SIdentifier)]
 {-- Interpreter Definitions --}
 type Location = SIdentifier
 type Env = Map SIdentifier Location
-type Store = Map Location IExpression
+
+data StoreValue = Ref Location
+                | Val IExpression
+  deriving (Show, Eq)
+type Store = Map Location StoreValue
 
 type ObjectScope = [Env]
 
